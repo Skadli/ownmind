@@ -22,5 +22,7 @@
 - 已定栈：前端编译 Rsbuild（Rspack）
 - 已定栈：单仓；crates/（Cargo workspace，一模块一 crate）、agent/（TS）、web/（React），agent+web 用 pnpm workspace
 - 已定：Rust 主进程 + agent Node 子进程，stdio JSON-RPC（决策 002）
-- 沙盒实现方式（追问中）
+- 已定：沙盒为独立常驻容器 + 容器内 Rust 执行服务，不挂 docker.sock（决策 003）
+- 联网搜索后端（追问中）
+- 测试工具、门禁工具（待问）
 - Rust 与 TS agent 模块如何通信（phase-01）
