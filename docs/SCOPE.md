@@ -24,6 +24,7 @@
   3. 定时任务
   4. 联网搜索、抓取网页
   5. 在隔离沙盒里跑命令、读写文件
+- 联网搜索后端：主人填 Brave Search 或 Tavily 的 Key；可选启用自托管 SearXNG（无需 Key）
 - 预设工具（8 个）：联网搜索、抓网页、执行命令、读文件、写文件、改文件、读写记忆、管理定时任务
 - 技能格式：Agent Skills 标准（SKILL.md），兼容 Claude Code、pi-skills 现成技能
 - 安装技能：在对话里给 agent 一个 Git 链接由它装进已装目录，或主人 SSH 上服务器拷入
