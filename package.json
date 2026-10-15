@@ -1,6 +1,7 @@
 {
   "name": "ownmind",
   "private": true,
+  "license": "AGPL-3.0-only",
   "packageManager": "pnpm@12.9.0",
   "engines": {
     "node": ">=22"
