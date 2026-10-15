@@ -16,5 +16,5 @@
 启动语：读 AGENTS.md 和 .aef/state.md，执行 phase-00。
 
 ## 未决问题
-- 主人如何安装技能（追问中）
+- 管理页面 MVP 包含哪些页面（追问中）
 - Rust 与 TS agent 模块如何通信（phase-01）
