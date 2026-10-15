@@ -17,7 +17,7 @@
 - [x] 02 迁移体系（.aef/tickets/02-migrations.md）：auth_*、conv_conversation，UUIDv7 + UTC 毫秒（决策 007）
 - [x] 03 登录 + 会话 CRUD（.aef/tickets/03-login-conversations.md）
 - [x] 04 门禁与 CI（.aef/tickets/04-gates-ci.md）：module-deps、migration-lock、table-owner + .github/workflows/ci.yml；CI 已在 GitHub 跑绿
-- [ ] 05 部署：Dockerfile、Compose、Caddy、先迁移后启动、/healthz（需主人服务器验证）
+- [~] 05 部署（.aef/tickets/05-deploy.md）：镜像 + Compose + Caddy，CI 冒烟通过，ghcr edge 已发布；只差主人服务器验证
 
 ## 下一步
 启动语：读 AGENTS.md 和 .aef/state.md，执行 phase-02 的下一张未完成票。
