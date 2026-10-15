@@ -1,7 +1,7 @@
 # .aef/state.md
 
 ## 当前
-- 阶段：phase-00
+- 阶段：phase-00（追问中）
 - 里程碑：-
 
 ## 里程碑
@@ -16,4 +16,5 @@
 启动语：读 AGENTS.md 和 .aef/state.md，执行 phase-00。
 
 ## 未决问题
--
+- 一个部署服务一人还是多人？
+- Rust 与 TS agent 模块如何通信（phase-01）

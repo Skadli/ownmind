@@ -3,7 +3,7 @@
 本文件是 AI 的入口，保持在 100 行以内。
 
 ## 项目
-<一句话：这个系统是什么、给谁用>。范围见 docs/SCOPE.md，术语见 docs/GLOSSARY.md，架构见 docs/architecture.md，技术栈与具体做法见 docs/stack.md。
+开源、自托管的个人 AI agent 平台，个人部署到云服务器后通过浏览器管理页面（后续 App）使用。范围见 docs/SCOPE.md，术语见 docs/GLOSSARY.md，架构见 docs/architecture.md，技术栈与具体做法见 docs/stack.md。
 
 ## 工作方式
 - 这个项目做什么只以 docs/SCOPE.md 为准。docs/SCOPE.md 为空时，问用户想做什么，不要推测或推荐产品类型。技能里出现的表名、模块名、业务名词都只是举例。
