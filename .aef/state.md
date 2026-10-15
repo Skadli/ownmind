@@ -16,5 +16,5 @@
 启动语：读 AGENTS.md 和 .aef/state.md，执行 phase-00。
 
 ## 未决问题
-- 部署方式（追问中）
+- 管理页面登录与安全（追问中）
 - Rust 与 TS agent 模块如何通信（phase-01）
