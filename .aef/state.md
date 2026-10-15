@@ -21,5 +21,6 @@
 - 已定栈：前端 React + TypeScript + Tailwind + shadcn/ui，静态文件由 Axum 托管；不用 Vite（主人要求）
 - 已定栈：前端编译 Rsbuild（Rspack）
 - 已定栈：单仓；crates/（Cargo workspace，一模块一 crate）、agent/（TS）、web/（React），agent+web 用 pnpm workspace
-- Rust 与 TS agent 通信方式（追问中）
+- 已定：Rust 主进程 + agent Node 子进程，stdio JSON-RPC（决策 002）
+- 沙盒实现方式（追问中）
 - Rust 与 TS agent 模块如何通信（phase-01）
