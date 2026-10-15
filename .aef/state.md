@@ -1,7 +1,7 @@
 # .aef/state.md
 
 ## 当前
-- 阶段：phase-02 行走骨架
+- 阶段：phase-04 单票（M1 第一迭代）
 - 里程碑：M1
 
 ## 里程碑
@@ -18,6 +18,17 @@
 - [x] 03 登录 + 会话 CRUD（.aef/tickets/03-login-conversations.md）
 - [x] 04 门禁与 CI（.aef/tickets/04-gates-ci.md）：module-deps、migration-lock、table-owner + .github/workflows/ci.yml；CI 已在 GitHub 跑绿
 - [~] 05 部署（.aef/tickets/05-deploy.md）：镜像 + Compose + Caddy，CI 冒烟通过，ghcr edge 已发布；只差主人服务器验证
+
+## 本迭代票（M1 第一迭代，2026-10-15 切票；主人授权 AI 自行决策）
+- [x] 06 供应商凭据与默认模型
+- [x] 07 消息存储
+- [ ] 08 agent 子进程与 RPC 协议（阻塞于 06、07）
+- [ ] 09 流式聊天（阻塞于 08）
+- [ ] 10 上下文组装与压缩（阻塞于 09）
+- [ ] 11 TOTP 两步验证
+- [ ] 12 登录限速
+- [ ] 13 设置页骨架（阻塞于 06、11）
+- [ ] 14 M1 验收（阻塞于 06–13）
 
 ## 下一步
 启动语：读 AGENTS.md 和 .aef/state.md，执行 phase-02 的下一张未完成票。

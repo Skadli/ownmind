@@ -1,4 +1,8 @@
-//! 共享内核：ID、时间、错误基础类型，保持极小。
+//! 共享内核：ID、时间、主密钥加密，保持极小。
+
+mod secret;
+
+pub use secret::{MasterKey, SecretError};
 
 /// 新建一个 ID：UUIDv7 文本（决策 007）。按生成时间有序。
 pub fn new_id() -> String {

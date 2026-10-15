@@ -11,7 +11,8 @@ use axum::{Json, Router};
 use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use ownmind_auth::api::{AuthError, SESSION_TTL_MS};
-use ownmind_conversation::api::{Conversation, ConversationError};
+use ownmind_conversation::api::{Conversation, ConversationError, Message};
+use ownmind_settings::api::{Credential, CredentialInput, DefaultModel, SettingsError};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tower_http::services::{ServeDir, ServeFile};
@@ -34,6 +35,19 @@ pub fn router(app: App, web_dir: &Path) -> Router {
         .route(
             "/conversations/{id}",
             patch(rename_conversation).delete(delete_conversation),
+        )
+        .route("/conversations/{id}/messages", get(list_messages))
+        .route(
+            "/settings/credentials",
+            get(list_credentials).post(create_credential),
+        )
+        .route(
+            "/settings/credentials/{id}",
+            patch(update_credential).delete(delete_credential),
+        )
+        .route(
+            "/settings/default-model",
+            get(get_default_model).put(put_default_model),
         )
         .fallback(|| async { ApiError(StatusCode::NOT_FOUND, "not_found") });
     Router::new()
@@ -78,6 +92,22 @@ impl From<ConversationError> for ApiError {
                 Self(StatusCode::UNPROCESSABLE_ENTITY, "invalid_title")
             }
             ConversationError::Db(e) => internal(e),
+        }
+    }
+}
+
+impl From<SettingsError> for ApiError {
+    fn from(e: SettingsError) -> Self {
+        let unprocessable = |code| Self(StatusCode::UNPROCESSABLE_ENTITY, code);
+        match e {
+            SettingsError::NotFound => Self(StatusCode::NOT_FOUND, "not_found"),
+            SettingsError::InvalidLabel => unprocessable("invalid_label"),
+            SettingsError::InvalidBaseUrl => unprocessable("invalid_base_url"),
+            SettingsError::MissingKey => unprocessable("missing_key"),
+            SettingsError::InvalidModel => unprocessable("invalid_model"),
+            SettingsError::NoDefaultModel => Self(StatusCode::CONFLICT, "no_default_model"),
+            SettingsError::Secret(e) => internal(e),
+            SettingsError::Db(e) => internal(e),
         }
     }
 }
@@ -223,5 +253,65 @@ async fn delete_conversation(
     UrlPath(id): UrlPath<String>,
 ) -> Result<StatusCode, ApiError> {
     app.conversations.delete(&id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_messages(
+    _: Owner,
+    State(app): State<App>,
+    UrlPath(id): UrlPath<String>,
+) -> Result<Json<Vec<Message>>, ApiError> {
+    Ok(Json(app.conversations.messages(&id).await?))
+}
+
+// ---------- 设置：账户 ----------
+
+async fn list_credentials(
+    _: Owner,
+    State(app): State<App>,
+) -> Result<Json<Vec<Credential>>, ApiError> {
+    Ok(Json(app.settings.list_credentials().await?))
+}
+
+async fn create_credential(
+    _: Owner,
+    State(app): State<App>,
+    Json(body): Json<CredentialInput>,
+) -> Result<(StatusCode, Json<Credential>), ApiError> {
+    let c = app.settings.create_credential(body).await?;
+    Ok((StatusCode::CREATED, Json(c)))
+}
+
+async fn update_credential(
+    _: Owner,
+    State(app): State<App>,
+    UrlPath(id): UrlPath<String>,
+    Json(body): Json<CredentialInput>,
+) -> Result<Json<Credential>, ApiError> {
+    Ok(Json(app.settings.update_credential(&id, body).await?))
+}
+
+async fn delete_credential(
+    _: Owner,
+    State(app): State<App>,
+    UrlPath(id): UrlPath<String>,
+) -> Result<StatusCode, ApiError> {
+    app.settings.delete_credential(&id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn get_default_model(
+    _: Owner,
+    State(app): State<App>,
+) -> Result<Json<Option<DefaultModel>>, ApiError> {
+    Ok(Json(app.settings.default_model().await?))
+}
+
+async fn put_default_model(
+    _: Owner,
+    State(app): State<App>,
+    Json(body): Json<DefaultModel>,
+) -> Result<StatusCode, ApiError> {
+    app.settings.set_default_model(body).await?;
     Ok(StatusCode::NO_CONTENT)
 }

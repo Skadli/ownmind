@@ -2,9 +2,9 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { ApiError, api, type Conversation } from "../api/client";
 import { errorText, t } from "../i18n";
 
-type Props = { onLoggedOut: () => void };
+type Props = { onLoggedOut: () => void; onOpenSettings: () => void };
 
-export function ConversationsPage({ onLoggedOut }: Props) {
+export function ConversationsPage({ onLoggedOut, onOpenSettings }: Props) {
   const [items, setItems] = useState<Conversation[]>([]);
   const [editing, setEditing] = useState<{ id: string; title: string } | null>(
     null,
@@ -75,6 +75,13 @@ export function ConversationsPage({ onLoggedOut }: Props) {
             className="rounded-lg bg-neutral-900 px-4 py-2 text-white"
           >
             {t("conversations.new")}
+          </button>
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="rounded-lg px-4 py-2 text-neutral-600 hover:bg-neutral-100"
+          >
+            {t("nav.settings")}
           </button>
           <button
             type="button"

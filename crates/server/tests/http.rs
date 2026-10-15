@@ -21,7 +21,7 @@ impl TestServer {
         std::fs::write(web.join("app.js"), "console.log(1)").unwrap();
         let pool = open_db(&dir.path().join("data")).await.unwrap();
         migrate(&pool).await.unwrap();
-        let router = router(App::new(pool), &web);
+        let router = router(App::new(pool, ownmind_kernel::MasterKey::random()), &web);
         Self {
             _dir: dir,
             router,
@@ -205,6 +205,8 @@ async fn conversation_crud_over_http() {
 
     let (_, list) = s.json(Method::GET, "/api/conversations", None).await;
     assert_eq!(list.as_array().unwrap().len(), 1);
+    let (code, msgs) = s.json(Method::GET, &format!("{path}/messages"), None).await;
+    assert_eq!((code, msgs), (StatusCode::OK, json!([])));
     assert_eq!(list[0]["title"], "旅行计划");
 
     assert_eq!(
@@ -217,4 +219,80 @@ async fn conversation_crud_over_http() {
     );
     let (_, list) = s.json(Method::GET, "/api/conversations", None).await;
     assert_eq!(list, json!([]));
+}
+
+#[tokio::test]
+async fn account_credentials_over_http_never_return_the_key() {
+    let mut s = TestServer::start().await;
+    assert_eq!(
+        s.call(Method::GET, "/api/settings/credentials", None)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    s.call(
+        Method::POST,
+        "/api/auth/setup",
+        Some(json!({ "password": "correct horse battery" })),
+    )
+    .await;
+
+    let (code, body) = s
+        .json(
+            Method::POST,
+            "/api/settings/credentials",
+            Some(json!({ "kind": "openai-compatible", "label": "Ollama", "apiKey": "k" })),
+        )
+        .await;
+    assert_eq!(
+        (code, body),
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            json!({ "error": "invalid_base_url" })
+        )
+    );
+
+    let (code, created) = s
+        .json(
+            Method::POST,
+            "/api/settings/credentials",
+            Some(json!({ "kind": "openai", "label": "OpenAI", "apiKey": "sk-abcdef9876" })),
+        )
+        .await;
+    assert_eq!(code, StatusCode::CREATED);
+    assert_eq!(created["keyHint"], "…9876");
+    let id = created["id"].as_str().unwrap().to_owned();
+
+    let (_, raw) = s.call(Method::GET, "/api/settings/credentials", None).await;
+    assert!(!raw.contains("sk-abcdef"));
+
+    let (_, model) = s
+        .json(Method::GET, "/api/settings/default-model", None)
+        .await;
+    assert_eq!(model, Value::Null);
+    let put = json!({ "credentialId": id, "modelId": "gpt-5" });
+    assert_eq!(
+        s.call(
+            Method::PUT,
+            "/api/settings/default-model",
+            Some(put.clone())
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    let (_, model) = s
+        .json(Method::GET, "/api/settings/default-model", None)
+        .await;
+    assert_eq!(model, put);
+
+    let path = format!("/api/settings/credentials/{id}");
+    assert_eq!(
+        s.call(Method::DELETE, &path, None).await.0,
+        StatusCode::NO_CONTENT
+    );
+    let (_, model) = s
+        .json(Method::GET, "/api/settings/default-model", None)
+        .await;
+    assert_eq!(model, Value::Null);
 }

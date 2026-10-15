@@ -1,4 +1,4 @@
-use ownmind_server::{App, Config, migrate, open_db, router};
+use ownmind_server::{App, Config, master_key, migrate, open_db, router};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -16,7 +16,10 @@ async fn main() -> anyhow::Result<()> {
             tracing::info!(data_dir = %config.data_dir.display(), "migrations applied");
             Ok(())
         }
-        None => serve(config, App::new(pool)).await,
+        None => {
+            let key = master_key(&config.data_dir)?;
+            serve(config, App::new(pool, key)).await
+        }
         Some(other) => anyhow::bail!("未知命令：{other}（可用：migrate）"),
     }
 }

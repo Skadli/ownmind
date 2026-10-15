@@ -4,3 +4,17 @@
  * 会话：主人与 agent 的一条对话线程。
  */
 export type Conversation = { id: string, title: string, createdAt: number, updatedAt: number, };
+
+/**
+ * 会话里的一条消息。
+ */
+export type Message = { id: string, conversationId: string, seq: number, role: Role, 
+/**
+ * pi 的消息 JSON，原样回放给模型。
+ */
+body: unknown, text: string, inputTokens: number | null, outputTokens: number | null, createdAt: number, };
+
+/**
+ * 消息的发送方。
+ */
+export type Role = "user" | "assistant";

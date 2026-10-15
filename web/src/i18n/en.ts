@@ -26,4 +26,43 @@ export const en: Messages = {
   "error.invalid_title": "Title can't be empty or longer than 200 characters.",
   "error.not_found": "That conversation no longer exists.",
   "error.internal": "Something went wrong. Please try again.",
+  "nav.settings": "Settings",
+  "nav.back": "Back",
+  "account.title": "Account",
+  "account.hint":
+    "Add your own model provider API keys. Keys are encrypted on your server; only the last 4 characters are shown.",
+  "account.add": "Add provider",
+  "account.empty": "No providers yet.",
+  "account.kind": "Provider",
+  "account.label": "Name",
+  "account.baseUrl": "Base URL",
+  "account.baseUrlHint":
+    "Required for compatible endpoints, e.g. http://localhost:11434/v1",
+  "account.apiKey": "API key",
+  "account.apiKeyKeep": "Leave blank to keep the current key",
+  "account.save": "Save",
+  "account.cancel": "Cancel",
+  "account.edit": "Edit",
+  "account.delete": "Delete",
+  "account.deleteConfirm":
+    "Delete this provider? A default model using it will be cleared.",
+  "account.defaultModel": "Default model",
+  "account.defaultModelHint":
+    "Pick a provider and enter a model ID, e.g. gpt-5, claude-sonnet-4-5, deepseek-chat.",
+  "account.modelId": "Model ID",
+  "account.saved": "Saved",
+  "kind.openai-compatible": "OpenAI-compatible",
+  "kind.anthropic-compatible": "Anthropic-compatible",
+  "kind.openai": "OpenAI",
+  "kind.anthropic": "Anthropic",
+  "kind.google": "Google",
+  "kind.deepseek": "DeepSeek",
+  "kind.openrouter": "OpenRouter",
+  "error.invalid_label": "Name is required (max 100 characters).",
+  "error.invalid_base_url":
+    "Base URL must start with http:// or https:// (required for compatible endpoints).",
+  "error.missing_key": "Enter an API key.",
+  "error.invalid_model": "Enter a model ID.",
+  "error.no_default_model":
+    "No default model yet. Add one in Settings → Account.",
 };

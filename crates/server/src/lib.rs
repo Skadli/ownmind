@@ -8,6 +8,8 @@ use std::str::FromStr;
 
 use ownmind_auth::api::Auth;
 use ownmind_conversation::api::Conversations;
+use ownmind_kernel::MasterKey;
+use ownmind_settings::api::Settings;
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 
@@ -38,15 +40,23 @@ impl Config {
 pub struct App {
     pub auth: Auth,
     pub conversations: Conversations,
+    pub settings: Settings,
 }
 
 impl App {
-    pub fn new(db: SqlitePool) -> Self {
+    pub fn new(db: SqlitePool, key: MasterKey) -> Self {
         Self {
             auth: Auth::new(db.clone()),
-            conversations: Conversations::new(db),
+            conversations: Conversations::new(db.clone()),
+            settings: Settings::new(db, key),
         }
     }
+}
+
+/// 数据目录下的主密钥（决策 008），首次启动生成。
+pub fn master_key(data_dir: &Path) -> anyhow::Result<MasterKey> {
+    std::fs::create_dir_all(data_dir)?;
+    Ok(MasterKey::load_or_create(&data_dir.join("master.key"))?)
 }
 
 /// 打开（必要时创建）数据目录下的 app.db：WAL、外键开启。
@@ -65,6 +75,7 @@ pub async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
     let modules = [
         &ownmind_auth::api::MIGRATOR,
         &ownmind_conversation::api::MIGRATOR,
+        &ownmind_settings::api::MIGRATOR,
     ];
     let mut migrations: Vec<_> = modules.iter().flat_map(|m| m.iter().cloned()).collect();
     migrations.sort_by_key(|m| m.version);

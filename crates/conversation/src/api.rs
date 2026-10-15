@@ -1,6 +1,6 @@
 //! 公共入口：其他模块只能用这里导出的东西。
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use ts_rs::TS;
 
@@ -21,6 +21,89 @@ pub struct Conversation {
     pub created_at: i64,
     #[ts(type = "number")]
     pub updated_at: i64,
+}
+
+/// 消息的发送方。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "conversation.ts", rename_all = "lowercase")]
+pub enum Role {
+    User,
+    Assistant,
+}
+
+impl Role {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Assistant => "assistant",
+        }
+    }
+}
+
+/// 会话里的一条消息。
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "conversation.ts", rename_all = "camelCase")]
+pub struct Message {
+    pub id: String,
+    pub conversation_id: String,
+    #[ts(type = "number")]
+    pub seq: i64,
+    pub role: Role,
+    /// pi 的消息 JSON，原样回放给模型。
+    #[ts(type = "unknown")]
+    pub body: serde_json::Value,
+    pub text: String,
+    #[ts(type = "number | null")]
+    pub input_tokens: Option<i64>,
+    #[ts(type = "number | null")]
+    pub output_tokens: Option<i64>,
+    #[ts(type = "number")]
+    pub created_at: i64,
+}
+
+/// 追加消息的入参。
+#[derive(Debug, Clone)]
+pub struct NewMessage {
+    pub role: Role,
+    pub body: serde_json::Value,
+    pub text: String,
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
+}
+
+#[derive(sqlx::FromRow)]
+struct MessageRow {
+    id: String,
+    conversation_id: String,
+    seq: i64,
+    role: String,
+    body: String,
+    text: String,
+    input_tokens: Option<i64>,
+    output_tokens: Option<i64>,
+    created_at: i64,
+}
+
+impl From<MessageRow> for Message {
+    fn from(r: MessageRow) -> Self {
+        Self {
+            id: r.id,
+            conversation_id: r.conversation_id,
+            seq: r.seq,
+            role: if r.role == "user" {
+                Role::User
+            } else {
+                Role::Assistant
+            },
+            body: serde_json::from_str(&r.body).expect("body 由本模块写入，是合法 JSON"),
+            text: r.text,
+            input_tokens: r.input_tokens,
+            output_tokens: r.output_tokens,
+            created_at: r.created_at,
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -98,6 +181,62 @@ impl Conversations {
             return Err(ConversationError::NotFound);
         }
         Ok(())
+    }
+
+    pub async fn get(&self, id: &str) -> Result<Conversation, ConversationError> {
+        sqlx::query_as("SELECT * FROM conv_conversation WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&self.db)
+            .await?
+            .ok_or(ConversationError::NotFound)
+    }
+
+    /// 追加一条消息（seq 自增），并刷新会话的 updated_at。
+    pub async fn append(
+        &self,
+        conversation_id: &str,
+        msg: NewMessage,
+    ) -> Result<Message, ConversationError> {
+        let now = ownmind_kernel::now_ms();
+        let mut tx = self.db.begin().await?;
+        let touched = sqlx::query("UPDATE conv_conversation SET updated_at = ? WHERE id = ?")
+            .bind(now)
+            .bind(conversation_id)
+            .execute(&mut *tx)
+            .await?;
+        if touched.rows_affected() == 0 {
+            return Err(ConversationError::NotFound);
+        }
+        let row: MessageRow = sqlx::query_as(
+            "INSERT INTO conv_message \
+             (id, conversation_id, seq, role, body, text, input_tokens, output_tokens, created_at) \
+             VALUES (?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM conv_message WHERE conversation_id = ?), \
+                     ?, ?, ?, ?, ?, ?) RETURNING *",
+        )
+        .bind(ownmind_kernel::new_id())
+        .bind(conversation_id)
+        .bind(conversation_id)
+        .bind(msg.role.as_str())
+        .bind(msg.body.to_string())
+        .bind(&msg.text)
+        .bind(msg.input_tokens)
+        .bind(msg.output_tokens)
+        .bind(now)
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(row.into())
+    }
+
+    /// 会话的全部消息，按 seq 升序。
+    pub async fn messages(&self, conversation_id: &str) -> Result<Vec<Message>, ConversationError> {
+        self.get(conversation_id).await?;
+        let rows: Vec<MessageRow> =
+            sqlx::query_as("SELECT * FROM conv_message WHERE conversation_id = ? ORDER BY seq")
+                .bind(conversation_id)
+                .fetch_all(&self.db)
+                .await?;
+        Ok(rows.into_iter().map(Into::into).collect())
     }
 }
 

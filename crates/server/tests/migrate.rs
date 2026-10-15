@@ -3,7 +3,14 @@ use std::process::Command;
 use sqlx::Row;
 use sqlx::sqlite::SqlitePoolOptions;
 
-const M1_TABLES: [&str; 3] = ["auth_login_session", "auth_owner", "conv_conversation"];
+const TABLES: &[&str] = &[
+    "auth_login_session",
+    "auth_owner",
+    "conv_conversation",
+    "conv_message",
+    "settings_credential",
+    "settings_preference",
+];
 
 async fn tables(db: &std::path::Path) -> Vec<String> {
     let url = format!("sqlite://{}", db.display());
@@ -43,7 +50,7 @@ async fn migrate_command_builds_empty_database_and_is_repeatable() {
         String::from_utf8_lossy(&second.stderr)
     );
 
-    assert_eq!(tables(&data.path().join("app.db")).await, M1_TABLES);
+    assert_eq!(tables(&data.path().join("app.db")).await, TABLES);
 }
 
 #[tokio::test]
