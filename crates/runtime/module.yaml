@@ -1,0 +1,4 @@
+name: runtime
+purpose: 管理 agent 子进程与 JSON-RPC，组装上下文，把工具调用分派给各模块；订阅 TaskDue 启动运行
+depends_on: [kernel, settings, sandbox, conversation, memory, schedule, skill]
+owns_tables: []

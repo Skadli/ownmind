@@ -1,0 +1,5 @@
+name: auth
+purpose: 主人密码、TOTP 与登录会话
+depends_on: [kernel]
+owns_tables: [auth_owner, auth_login_session]
+prefix: auth_

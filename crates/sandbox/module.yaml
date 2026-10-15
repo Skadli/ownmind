@@ -1,0 +1,4 @@
+name: sandbox
+purpose: 调用沙盒容器内 sandboxd 的客户端：执行命令、读写文件
+depends_on: [kernel]
+owns_tables: []

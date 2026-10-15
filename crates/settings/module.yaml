@@ -1,0 +1,5 @@
+name: settings
+purpose: 个人资料、系统偏好、模型供应商与搜索 Key（加密存储）、默认模型
+depends_on: [kernel]
+owns_tables: [settings_profile, settings_preference, settings_credential]
+prefix: settings_

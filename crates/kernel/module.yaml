@@ -1,0 +1,4 @@
+name: kernel
+purpose: 共享内核：ID、时间、错误基础类型，保持极小
+depends_on: []
+owns_tables: []

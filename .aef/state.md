@@ -26,4 +26,5 @@
 - 已定：联网搜索用主人在账户页填的 Brave Search / Tavily Key；SearXNG 作为可选组件（Compose profile 开启），不默认启用
 - 已定：测试与门禁工具（见 docs/stack.md）
 - 已定：项目名 Ownmind（AI 起名，主人可改）
-- 模块划分（aef-architecture，进行中）
+- 已定：模块划分（docs/architecture.md、crates/*/module.yaml）
+- 上下文管理（决策 005 提议，待主人确认）

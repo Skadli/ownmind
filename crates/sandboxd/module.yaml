@@ -1,0 +1,4 @@
+name: sandboxd
+purpose: 沙盒容器内的执行服务（独立二进制）
+depends_on: [kernel]
+owns_tables: []
