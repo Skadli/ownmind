@@ -1,0 +1,4 @@
+name: auth
+depends_on: []
+owns_tables: [auth_owner]
+prefix: auth_

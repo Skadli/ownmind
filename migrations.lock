@@ -1,0 +1,2 @@
+49761af596a3f7e9673d5489e1b40358f9a5ae20eaaf462135d40fb50a693c25  crates/auth/migrations/20261015120000_auth_init.sql
+c33edcdfb14950d6a3c502162d5dd8ab08869a9ed8a8194d1a4812d8af23eeb5  crates/conversation/migrations/20261015120100_conv_init.sql

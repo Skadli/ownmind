@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# 把尚未登记的迁移追加进 migrations.lock；已登记的行永不改写。
+root="${1:-.}"; lock="$root/migrations.lock"; touch "$lock"
+for f in "$root"/crates/*/migrations/*.sql; do
+  [ -e "$f" ] || continue
+  rel="${f#"$root"/}"
+  grep -q " $rel\$" "$lock" || { (cd "$root" && sha256sum "$rel") >> "$lock"; echo "登记 $rel"; }
+done

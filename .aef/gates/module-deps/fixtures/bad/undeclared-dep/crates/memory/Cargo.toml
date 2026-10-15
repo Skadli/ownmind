@@ -1,0 +1,3 @@
+[dependencies]
+ownmind-kernel = { path = "../kernel" }
+ownmind-conversation = { path = "../conversation" }

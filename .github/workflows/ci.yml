@@ -1,0 +1,54 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 门禁
+        run: .aef/gates/run-all.sh .
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint 与格式
+        run: |
+          cargo fmt --check
+          cargo clippy --workspace --all-targets -- -D warnings
+          pnpm biome check .
+
+      - name: 类型检查
+        run: pnpm -r typecheck
+
+      - name: 测试（含空库迁移）
+        run: |
+          cargo test --workspace
+          pnpm -r test
+
+      - name: 生成的 TS 类型与代码一致
+        run: git diff --exit-code -- web/src/api/generated agent/src/protocol/generated
+
+      - name: 构建管理页面
+        run: pnpm -C web build

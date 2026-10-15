@@ -21,7 +21,7 @@
 
 ## 命名
 - 项目名 Ownmind；Rust crate 名 `ownmind-<模块>`（server 二进制 `ownmind`，沙盒 `ownmind-sandboxd`）；npm 包 `@ownmind/agent`、`@ownmind/web`。
-- 环境变量前缀 `OWNMIND_`；镜像 `ghcr.io/skaduv/ownmind`、`ghcr.io/skaduv/ownmind-sandbox`。
+- 环境变量前缀 `OWNMIND_`；镜像 `ghcr.io/skadli/ownmind`、`ghcr.io/skadli/ownmind-sandbox`。
 
 ## 进程与容器
 - `server`（Rust 主进程）：HTTP、登录、数据库、定时任务；托管 web 静态文件；拉起 agent 子进程（stdio JSON-RPC，决策 002）。

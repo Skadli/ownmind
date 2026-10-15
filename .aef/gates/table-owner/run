@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""表归属：模块的 SQL（src/ 与 migrations/）只能引用自己 owns_tables 里的表。"""
+import pathlib, re, sys
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+from lib_aef import modules
+
+root = sys.argv[1] if len(sys.argv) > 1 else "."
+mods = modules(root)
+prefixes = {m["prefix"].rstrip("_") for m in mods.values() if m["prefix"]}
+pat = re.compile(
+    r"\b(?:INTO|UPDATE|FROM|JOIN|TABLE|ON)\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?"
+    rf"((?:{'|'.join(sorted(prefixes))})_[a-z0-9_]+)",
+    re.I,
+)
+errors = []
+for name, m in mods.items():
+    own = set(m["owns_tables"])
+    files = list((m["dir"] / "src").rglob("*.rs")) + list((m["dir"] / "migrations").glob("*.sql"))
+    for f in files:
+        for table in pat.findall(f.read_text()):
+            if table not in own:
+                errors.append(f"{name}: {f.relative_to(root)} 引用了不属于本模块的表 {table}")
+for e in sorted(set(errors)): print(e)
+sys.exit(1 if errors else 0)

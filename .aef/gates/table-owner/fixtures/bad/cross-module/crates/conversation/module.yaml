@@ -1,0 +1,4 @@
+name: conversation
+depends_on: []
+owns_tables: [conv_conversation]
+prefix: conv_

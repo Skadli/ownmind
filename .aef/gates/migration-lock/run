@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# 迁移不可变：migrations.lock 记录每个迁移的 sha256。已记录的不能改、不能删；新迁移必须先登记（./update）。
+root="${1:-.}"; lock="$root/migrations.lock"; status=0
+touch_lock=$( [ -f "$lock" ] && echo yes )
+if [ -n "$touch_lock" ]; then
+  while read -r sum file; do
+    [ -z "$file" ] && continue
+    [ -f "$root/$file" ] || { echo "迁移被删除: $file"; status=1; continue; }
+    now=$(sha256sum "$root/$file" | cut -d' ' -f1)
+    [ "$now" = "$sum" ] || { echo "迁移被修改: $file（写一个新迁移来修正）"; status=1; }
+  done < "$lock"
+fi
+for f in "$root"/crates/*/migrations/*.sql; do
+  [ -e "$f" ] || continue
+  rel="${f#"$root"/}"
+  grep -q " $rel\$" "$lock" 2>/dev/null || { echo "迁移未登记: $rel（运行 .aef/gates/migration-lock/update）"; status=1; }
+done
+exit $status

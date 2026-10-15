@@ -1,0 +1,2 @@
+name: b
+depends_on: [a]

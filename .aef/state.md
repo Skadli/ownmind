@@ -16,7 +16,7 @@
 - [x] 01 脚手架与本地一键启动（.aef/tickets/01-scaffold.md）
 - [x] 02 迁移体系（.aef/tickets/02-migrations.md）：auth_*、conv_conversation，UUIDv7 + UTC 毫秒（决策 007）
 - [x] 03 登录 + 会话 CRUD（.aef/tickets/03-login-conversations.md）
-- [ ] 04 门禁与 CI：lint/类型、模块边界、迁移不可变 + 空库迁移，GitHub Actions
+- [x] 04 门禁与 CI（.aef/tickets/04-gates-ci.md）：module-deps、migration-lock、table-owner + .github/workflows/ci.yml；待推到 GitHub 后看 CI 首次跑绿
 - [ ] 05 部署：Dockerfile、Compose、Caddy、先迁移后启动、/healthz（需主人服务器验证）
 
 ## 下一步
@@ -37,5 +37,6 @@
 - 已定：上下文管理（决策 005）
 - 已定：里程碑 M1–M4（phase-01 完成）
 - 已定：许可证 AGPL-3.0-only（决策 006）
+- 未决：GitHub 远程仓库——Hark 的 GitHub 连接无建仓库权限，需主人建空仓库 Skadli/ownmind 并授权
 - 未决：登录接口限速（M1 安全票一起做）
 - 已定：主键 UUIDv7 文本、时间 UTC 毫秒、STRICT 表（决策 007）

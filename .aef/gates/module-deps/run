@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""模块边界：crate 依赖只能是 module.yaml depends_on 里的模块；无环；业务/平台模块的 lib.rs 只公开 api。"""
+import pathlib, re, sys
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+from lib_aef import modules
+
+root = sys.argv[1] if len(sys.argv) > 1 else "."
+mods = modules(root)
+errors = []
+ROOTS = {"kernel", "server", "sandboxd"}  # 不受 lib.rs 规则约束
+
+for name, m in mods.items():
+    cargo = (m["dir"] / "Cargo.toml").read_text()
+    for dep in re.findall(r"^ownmind-([a-z0-9_-]+)\s*=", cargo, re.M):
+        if dep not in m["depends_on"]:
+            errors.append(f"{name}: 依赖 {dep}，但 module.yaml depends_on 没有它")
+    for dep in m["depends_on"]:
+        if dep not in mods:
+            errors.append(f"{name}: depends_on 里的 {dep} 不存在")
+    lib = m["dir"] / "src" / "lib.rs"
+    if name not in ROOTS and lib.exists():
+        for line in lib.read_text().splitlines():
+            s = line.strip()
+            if s.startswith("pub ") and s != "pub mod api;":
+                errors.append(f"{name}: lib.rs 只能公开 api，发现：{s}")
+
+state = {}
+def visit(n, path):
+    if state.get(n) == "done": return
+    if state.get(n) == "active":
+        errors.append("依赖成环：" + " → ".join(path + [n])); return
+    state[n] = "active"
+    for d in mods.get(n, {}).get("depends_on", []):
+        visit(d, path + [n])
+    state[n] = "done"
+for n in mods: visit(n, [])
+
+for e in errors: print(e)
+sys.exit(1 if errors else 0)
