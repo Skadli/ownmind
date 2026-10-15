@@ -27,4 +27,5 @@
 - 已定：测试与门禁工具（见 docs/stack.md）
 - 已定：项目名 Ownmind（AI 起名，主人可改）
 - 已定：模块划分（docs/architecture.md、crates/*/module.yaml）
-- 上下文管理（决策 005 提议，待主人确认）
+- 已定：上下文管理（决策 005）
+- 里程碑划分（追问中）
