@@ -1,7 +1,7 @@
 # .aef/state.md
 
 ## 当前
-- 阶段：phase-01（aef-stack 定栈中）
+- 阶段：phase-01（定栈完成，下一步 aef-architecture 划模块）
 - 里程碑：-
 
 ## 里程碑
@@ -24,5 +24,5 @@
 - 已定：Rust 主进程 + agent Node 子进程，stdio JSON-RPC（决策 002）
 - 已定：沙盒为独立常驻容器 + 容器内 Rust 执行服务，不挂 docker.sock（决策 003）
 - 已定：联网搜索用主人在账户页填的 Brave Search / Tavily Key；SearXNG 作为可选组件（Compose profile 开启），不默认启用
-- 测试工具、门禁工具（追问中）
-- Rust 与 TS agent 模块如何通信（phase-01）
+- 已定：测试与门禁工具（见 docs/stack.md）
+- 项目正式名称（追问中；影响 crate 名、环境变量前缀、镜像名）

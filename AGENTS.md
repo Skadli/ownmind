@@ -13,10 +13,18 @@
 - 技术栈没定（docs/stack.md 不存在）时，只遵守下面的通用规则，不自行选型。
 
 ## 命令
-<由 aef-stack 填写>
+技术细节见 docs/stack.md。
+- 测试：`cargo test --workspace && pnpm -r test`
+- Lint：`cargo clippy --workspace -- -D warnings && cargo fmt --check && pnpm biome check .`
+- 建库：`cargo run -p server -- migrate`
+- 运行：`cargo run -p server` + `pnpm -C web dev`
+- 门禁：`.aef/gates/run-all.sh .`
 
 ## 目录
-<由 aef-stack 填写>
+- `crates/<模块>/`：Rust 模块（api 公开、internal 私有、migrations、tests、module.yaml）；`crates/server` 组装根；`crates/sandboxd` 沙盒执行服务
+- `agent/`：TS agent（pi）；`agent/skills/builtin/` 预设技能
+- `web/`：管理页面（React）
+- `deploy/`：Compose、Caddyfile、安装脚本
 
 ## 硬规则（每条带理由；总数不超过 10 条）
 1. 只通过其他模块的公共入口访问它。理由：内部可以自由重构。
