@@ -16,5 +16,5 @@
 启动语：读 AGENTS.md 和 .aef/state.md，执行 phase-00。
 
 ## 未决问题
-- 设置页里“账户”“钱包”“反馈”在 MVP 中做什么（追问中）
+- phase-00 收尾：待主人确认无遗留问题
 - Rust 与 TS agent 模块如何通信（phase-01）
