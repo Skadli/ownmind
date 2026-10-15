@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# 迁移不可变：migrations.lock 记录了每个已合并迁移的 sha256，内容变化即失败。
+root="$1"; lock="$root/migrations.lock"; [ -f "$lock" ] || exit 0
+status=0
+while read -r sum file; do
+  [ -f "$root/$file" ] || { echo "迁移被删除: $file"; status=1; continue; }
+  now=$(sha256sum "$root/$file" | cut -d' ' -f1)
+  [ "$now" = "$sum" ] || { echo "迁移被修改: $file"; status=1; }
+done < "$lock"
+exit $status

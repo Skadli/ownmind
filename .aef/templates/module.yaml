@@ -1,0 +1,14 @@
+# 格式示例：下面的 xxx 换成本项目真实的模块，不代表项目要有这个模块。
+# 必填
+name: xxx
+purpose: <一句话职责>
+depends_on: []                      # 只能依赖这些模块的公共入口
+owns_tables: []                     # 本模块拥有的表，表名带前缀
+
+# 可选：用到再加
+# prefix: xxx_
+# events: []
+# permissions: []
+# menus: []
+# config: []
+# jobs: []
