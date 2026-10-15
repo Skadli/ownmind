@@ -77,7 +77,7 @@ jobs:
         if: failure()
         run: |
           docker build --progress=plain . > build.log 2>&1 || true
-          grep -E "error(\[E[0-9]+\])?:|ERR_|ERROR" build.log | head -30 | sed 's/^/::error::/'
+          grep -iE "error|cannot|no such file" build.log | head -30 | sed 's/^/::error::/'
           tail -60 build.log
 
       - name: 部署冒烟测试
