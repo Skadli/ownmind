@@ -1,14 +1,17 @@
-//! 组装根：读配置、拼路由。不放业务逻辑。
+//! 组装根：读配置、打开数据库、拼路由。不放业务逻辑。
+
+mod http;
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use axum::{Json, Router, routing::get};
-use serde_json::{Value, json};
+use ownmind_auth::api::Auth;
+use ownmind_conversation::api::Conversations;
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
-use tower_http::services::{ServeDir, ServeFile};
+
+pub use http::router;
 
 pub struct Config {
     pub addr: SocketAddr,
@@ -30,16 +33,20 @@ impl Config {
     }
 }
 
-pub fn router(config: Config) -> Router {
-    let index = config.web_dir.join("index.html");
-    let web = ServeDir::new(&config.web_dir).fallback(ServeFile::new(index));
-    Router::new()
-        .route("/healthz", get(healthz))
-        .fallback_service(web)
+/// 各模块服务的集合，交给 HTTP 层使用。
+#[derive(Clone)]
+pub struct App {
+    pub auth: Auth,
+    pub conversations: Conversations,
 }
 
-async fn healthz() -> Json<Value> {
-    Json(json!({ "status": "ok" }))
+impl App {
+    pub fn new(db: SqlitePool) -> Self {
+        Self {
+            auth: Auth::new(db.clone()),
+            conversations: Conversations::new(db),
+        }
+    }
 }
 
 /// 打开（必要时创建）数据目录下的 app.db：WAL、外键开启。

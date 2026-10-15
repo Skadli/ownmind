@@ -10,6 +10,9 @@ name = "ownmind"
 path = "src/main.rs"
 
 [dependencies]
+axum-extra.workspace = true
+time.workspace = true
+thiserror.workspace = true
 ownmind-kernel = { path = "../kernel" }
 ownmind-auth = { path = "../auth" }
 ownmind-settings = { path = "../settings" }

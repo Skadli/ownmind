@@ -1,20 +1,45 @@
 import { useEffect, useState } from "react";
+import { api } from "./api/client";
+import { ConversationsPage } from "./pages/ConversationsPage";
+import { PasswordPage } from "./pages/PasswordPage";
 
-type Health = "checking" | "ok" | "down";
+type Screen = "loading" | "setup" | "login" | "home";
 
 export function App() {
-  const [health, setHealth] = useState<Health>("checking");
+  const [screen, setScreen] = useState<Screen>("loading");
 
   useEffect(() => {
-    fetch("/healthz")
-      .then((res) => setHealth(res.ok ? "ok" : "down"))
-      .catch(() => setHealth("down"));
+    api
+      .status()
+      .then((s) =>
+        setScreen(!s.isSetUp ? "setup" : s.isLoggedIn ? "home" : "login"),
+      );
   }, []);
 
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-2 bg-neutral-50 text-neutral-900">
-      <h1 className="text-3xl font-semibold">Ownmind</h1>
-      <p className="text-sm text-neutral-500">server: {health}</p>
-    </main>
-  );
+  switch (screen) {
+    case "loading":
+      return null;
+    case "setup":
+      return (
+        <PasswordPage
+          mode="setup"
+          onSubmit={async (pw) => {
+            await api.setUp(pw);
+            setScreen("home");
+          }}
+        />
+      );
+    case "login":
+      return (
+        <PasswordPage
+          mode="login"
+          onSubmit={async (pw) => {
+            await api.logIn(pw);
+            setScreen("home");
+          }}
+        />
+      );
+    case "home":
+      return <ConversationsPage onLoggedOut={() => setScreen("login")} />;
+  }
 }

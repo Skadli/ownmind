@@ -6,8 +6,15 @@ license.workspace = true
 publish = false
 
 [dependencies]
+thiserror.workspace = true
+serde.workspace = true
+ts-rs.workspace = true
 sqlx.workspace = true
 ownmind-kernel = { path = "../kernel" }
+
+[dev-dependencies]
+tokio.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true

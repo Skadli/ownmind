@@ -1,4 +1,4 @@
-use ownmind_server::{Config, migrate, open_db, router};
+use ownmind_server::{App, Config, migrate, open_db, router};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -16,15 +16,15 @@ async fn main() -> anyhow::Result<()> {
             tracing::info!(data_dir = %config.data_dir.display(), "migrations applied");
             Ok(())
         }
-        None => serve(config).await,
+        None => serve(config, App::new(pool)).await,
         Some(other) => anyhow::bail!("未知命令：{other}（可用：migrate）"),
     }
 }
 
-async fn serve(config: Config) -> anyhow::Result<()> {
+async fn serve(config: Config, app: App) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(config.addr).await?;
     tracing::info!(addr = %config.addr, "ownmind listening");
-    axum::serve(listener, router(config))
+    axum::serve(listener, router(app, &config.web_dir))
         .with_graceful_shutdown(async {
             tokio::signal::ctrl_c().await.ok();
         })
