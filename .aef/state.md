@@ -16,5 +16,5 @@
 启动语：读 AGENTS.md 和 .aef/state.md，执行 phase-00。
 
 ## 未决问题
-- MVP 中 agent 的核心能力清单（追问中）
+- 预设哪些模型供应商（追问中）
 - Rust 与 TS agent 模块如何通信（phase-01）
