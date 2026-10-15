@@ -17,5 +17,6 @@
 
 ## 未决问题
 - 已定栈：Rust 后端 Axum（tokio）
-- 数据库与迁移工具（追问中）
+- 已定栈：SQLite（WAL）+ sqlx（含 sqlx 迁移）
+- 前端框架与组件库（追问中）
 - Rust 与 TS agent 模块如何通信（phase-01）
