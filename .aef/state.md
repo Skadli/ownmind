@@ -16,5 +16,6 @@
 启动语：读 AGENTS.md 和 .aef/state.md，执行 phase-01。
 
 ## 未决问题
-- 后端 Rust 框架（追问中）
+- 已定栈：Rust 后端 Axum（tokio）
+- 数据库与迁移工具（追问中）
 - Rust 与 TS agent 模块如何通信（phase-01）
