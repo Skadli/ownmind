@@ -19,6 +19,10 @@
 | Lint/格式 | clippy + rustfmt；Biome | Biome 2.5 | 都是 Rust 实现，快 |
 | 部署 | Docker Compose + 一键安装脚本；Caddy 自动 HTTPS | — | 2C4G Linux 云服务器 |
 
+## 命名
+- 项目名 Ownmind；Rust crate 名 `ownmind-<模块>`（server 二进制 `ownmind`，沙盒 `ownmind-sandboxd`）；npm 包 `@ownmind/agent`、`@ownmind/web`。
+- 环境变量前缀 `OWNMIND_`；镜像 `ghcr.io/skaduv/ownmind`、`ghcr.io/skaduv/ownmind-sandbox`。
+
 ## 进程与容器
 - `server`（Rust 主进程）：HTTP、登录、数据库、定时任务；托管 web 静态文件；拉起 agent 子进程（stdio JSON-RPC，决策 002）。
 - `agent`（Node 子进程，与 server 同容器）：无状态，工具需要的数据一律反向 RPC 调 server。

@@ -1,4 +1,4 @@
-# SCOPE
+# SCOPE（Ownmind）
 
 ## 用户与场景
 - 想拥有自己 AI agent 的个人：把本项目自部署到自己的云服务器，用浏览器远程打开管理页面使用和管理 agent（体验类似 Hark、Grok bot）。

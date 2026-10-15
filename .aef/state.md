@@ -25,4 +25,5 @@
 - 已定：沙盒为独立常驻容器 + 容器内 Rust 执行服务，不挂 docker.sock（决策 003）
 - 已定：联网搜索用主人在账户页填的 Brave Search / Tavily Key；SearXNG 作为可选组件（Compose profile 开启），不默认启用
 - 已定：测试与门禁工具（见 docs/stack.md）
-- 项目正式名称（追问中；影响 crate 名、环境变量前缀、镜像名）
+- 已定：项目名 Ownmind（AI 起名，主人可改）
+- 模块划分（aef-architecture，进行中）
