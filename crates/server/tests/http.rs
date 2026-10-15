@@ -8,6 +8,7 @@ fn config_with_web(dir: &std::path::Path) -> Config {
     Config {
         addr: "127.0.0.1:0".parse().unwrap(),
         web_dir: dir.to_path_buf(),
+        data_dir: dir.join("data"),
     }
 }
 

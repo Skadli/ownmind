@@ -79,9 +79,11 @@ mod internal;
 
 ### 迁移
 - 位置 `crates/<m>/migrations/`，文件名 `<YYYYMMDDHHMMSS>_<m>_<desc>.sql`（版本全局唯一）。
-- 各模块一个 `sqlx::migrate!()`，server 按依赖顺序执行，共用 `_sqlx_migrations` 表，`set_ignore_missing(true)`。
+- 各模块在 `api` 里导出 `MIGRATOR`（`sqlx::migrate!()`）；server 把所有模块的迁移合并成一个迁移器，按版本号全局排序执行，共用 `_sqlx_migrations` 表。新模块有迁移时在 `server::migrate` 里登记。
+- 主键 UUIDv7 文本、时间 UTC 毫秒整数、表加 `STRICT`（决策 007）。
 - 已合并迁移不可改：门禁 `migration-lock` 对比 `migrations.lock` 中的哈希。
 ```rust
+// crates/<m>/src/api.rs
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 ```
 

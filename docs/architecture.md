@@ -56,3 +56,21 @@ graph TD
 | 菜单路由 | 前端静态路由（单人无权限差异） | web |
 | API 契约 | Rust 类型为源，ts-rs 生成 TS；HTTP + SSE 推送运行事件 | server、runtime |
 | 可观测性 | tracing 结构化日志带请求/运行 ID；/healthz、/readyz | server |
+
+## 数据
+物理 schema 以 `crates/*/migrations/` 为准；主键 UUIDv7 文本、时间 UTC 毫秒（决策 007）。跨模块只存 ID，不建外键。
+
+### auth
+```mermaid
+erDiagram
+  auth_owner { TEXT id PK  TEXT password_hash  TEXT totp_secret }
+  auth_login_session { TEXT id PK  TEXT token_hash UK  INTEGER expires_at }
+```
+auth_owner 至多一行（`is_singleton` 唯一约束）；登录会话只存令牌哈希。
+
+### conversation
+```mermaid
+erDiagram
+  conv_conversation { TEXT id PK  TEXT title  INTEGER updated_at }
+```
+计划中：conv_message、conv_run、conv_compaction（随 M1 聊天票加入）。

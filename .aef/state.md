@@ -14,7 +14,7 @@
 
 ## 本迭代票（phase-02）
 - [x] 01 脚手架与本地一键启动（.aef/tickets/01-scaffold.md）
-- [ ] 02 迁移体系：sqlx 迁移运行器、server migrate 子命令、空库一条命令建好；只建 M1 用到的表（auth_*、conv_conversation），其余表随各自的票加（待定：ID 类型）
+- [x] 02 迁移体系（.aef/tickets/02-migrations.md）：auth_*、conv_conversation，UUIDv7 + UTC 毫秒（决策 007）
 - [ ] 03 登录 + 会话 CRUD（含前端页面）
 - [ ] 04 门禁与 CI：lint/类型、模块边界、迁移不可变 + 空库迁移，GitHub Actions
 - [ ] 05 部署：Dockerfile、Compose、Caddy、先迁移后启动、/healthz（需主人服务器验证）
@@ -37,3 +37,4 @@
 - 已定：上下文管理（决策 005）
 - 已定：里程碑 M1–M4（phase-01 完成）
 - 已定：许可证 AGPL-3.0-only（决策 006）
+- 已定：主键 UUIDv7 文本、时间 UTC 毫秒、STRICT 表（决策 007）
