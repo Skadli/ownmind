@@ -1,0 +1,5 @@
+# 自动申请 HTTPS 证书；域名来自 .env 的 OWNMIND_DOMAIN（需先把 DNS A 记录指到服务器）
+{$OWNMIND_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy ownmind:8787
+}

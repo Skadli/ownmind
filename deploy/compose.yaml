@@ -1,0 +1,44 @@
+# Ownmind 部署：cp .env.example .env，填好域名后 docker compose up -d
+name: ownmind
+
+x-ownmind: &ownmind
+  image: ${OWNMIND_IMAGE:-ghcr.io/skadli/ownmind:edge}
+  env_file: .env
+  volumes:
+    - ownmind-data:/data
+
+services:
+  # 先迁移：一次性任务，成功退出后 server 才启动
+  migrate:
+    <<: *ownmind
+    command: ["migrate"]
+    restart: "no"
+
+  ownmind:
+    <<: *ownmind
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      OWNMIND_DOMAIN: ${OWNMIND_DOMAIN:?在 .env 里设置 OWNMIND_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      ownmind:
+        condition: service_healthy
+
+volumes:
+  ownmind-data:
+  caddy-data:
+  caddy-config:

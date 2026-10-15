@@ -52,3 +52,53 @@ jobs:
 
       - name: 构建管理页面
         run: pnpm -C web build
+
+  docker:
+    # 用真实 Compose（migrate → ownmind → caddy）在 CI 里走一遍部署
+    runs-on: ubuntu-24.04
+    needs: check
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 构建镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ownmind:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: 部署冒烟测试
+        working-directory: deploy
+        run: |
+          cp .env.example .env
+          sed -i 's/^OWNMIND_DOMAIN=.*/OWNMIND_DOMAIN=localhost/; s#^OWNMIND_IMAGE=.*#OWNMIND_IMAGE=ownmind:ci#' .env
+          docker compose up -d --wait --wait-timeout 120
+          test "$(docker compose ps -a migrate --format '{{.ExitCode}}')" = 0
+          curl -fsSk https://localhost/healthz | grep -q '"ok"'
+          curl -fsSk https://localhost/ | grep -qi '<html'
+          curl -fsSk -c jar -H 'content-type: application/json' -d '{"password":"ci-password-123"}' https://localhost/api/auth/setup
+          curl -fsSk -b jar -H 'content-type: application/json' -d '{"title":"ci"}' https://localhost/api/conversations
+          # 重启后数据还在、迁移幂等
+          docker compose down
+          docker compose up -d --wait --wait-timeout 120
+          curl -fsSk -b jar https://localhost/api/conversations | grep -q '"ci"'
+
+      - name: 失败时输出日志
+        if: failure()
+        working-directory: deploy
+        run: docker compose logs
+
+      - name: 发布 edge 镜像
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker tag ownmind:ci ghcr.io/skadli/ownmind:edge
+          docker tag ownmind:ci ghcr.io/skadli/ownmind:sha-${GITHUB_SHA::7}
+          docker push ghcr.io/skadli/ownmind:edge
+          docker push ghcr.io/skadli/ownmind:sha-${GITHUB_SHA::7}

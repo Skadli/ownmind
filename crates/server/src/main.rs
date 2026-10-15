@@ -25,9 +25,28 @@ async fn serve(config: Config, app: App) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(config.addr).await?;
     tracing::info!(addr = %config.addr, "ownmind listening");
     axum::serve(listener, router(app, &config.web_dir))
-        .with_graceful_shutdown(async {
-            tokio::signal::ctrl_c().await.ok();
-        })
+        .with_graceful_shutdown(shutdown_signal())
         .await?;
     Ok(())
+}
+
+/// Ctrl-C 或 SIGTERM（docker stop）都触发优雅退出。
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c().await.ok();
+    };
+    #[cfg(unix)]
+    let term = async {
+        if let Ok(mut s) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        {
+            s.recv().await;
+        }
+    };
+    #[cfg(not(unix))]
+    let term = std::future::pending::<()>();
+    tokio::select! {
+        () = ctrl_c => {}
+        () = term => {}
+    }
+    tracing::info!("shutting down");
 }
