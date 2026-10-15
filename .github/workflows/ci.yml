@@ -73,6 +73,13 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: 镜像构建失败时输出错误
+        if: failure()
+        run: |
+          docker build --progress=plain . > build.log 2>&1 || true
+          grep -E "error(\[E[0-9]+\])?:|ERR_|ERROR" build.log | head -30 | sed 's/^/::error::/'
+          tail -60 build.log
+
       - name: 部署冒烟测试
         working-directory: deploy
         run: |
