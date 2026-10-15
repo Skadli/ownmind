@@ -14,7 +14,7 @@
 - [x] table-owner：引用他人表 → 失败（1 个 bad 样例）
 - [x] run-all.sh 对仓库全绿；在真实仓库里演示过改迁移、加未声明依赖会被拦
 - [x] GitHub Actions：门禁、fmt、clippy、biome、tsc、cargo test（含空库迁移）、vitest、生成类型无差异、web 构建
-- [ ] CI 在 GitHub 上首次跑绿（待远程仓库）
+- [x] CI 在 GitHub 上跑绿（run 38731833229，b8a78af）
 
 ## 备注
 “从上一版本升级”的迁移检查等第一个发布版本（v0.1.0）后再加。
