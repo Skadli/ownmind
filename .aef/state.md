@@ -1,7 +1,7 @@
 # .aef/state.md
 
 ## 当前
-- 阶段：phase-00（追问中）
+- 阶段：phase-01（aef-stack 定栈中）
 - 里程碑：-
 
 ## 里程碑
@@ -13,8 +13,8 @@
 - [ ] NN 标题
 
 ## 下一步
-启动语：读 AGENTS.md 和 .aef/state.md，执行 phase-00。
+启动语：读 AGENTS.md 和 .aef/state.md，执行 phase-01。
 
 ## 未决问题
-- phase-00 收尾：待主人确认无遗留问题
+- 后端 Rust 框架（追问中）
 - Rust 与 TS agent 模块如何通信（phase-01）
