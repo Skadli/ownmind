@@ -11,7 +11,10 @@
 ## MVP 功能（追问中）
 - 简单部署到云服务器
 - 浏览器访问的管理页面
-- agent 内核基于 pi，预设几家主要模型供应商
+- agent 内核基于 pi；模型供应商按此顺序预设，主人在管理页面填自己的 API Key：
+  1. 任意 OpenAI 兼容地址（覆盖通义、Kimi、本地 Ollama 等）
+  2. 任意 Anthropic 兼容地址
+  3. OpenAI、Anthropic、Google、DeepSeek、OpenRouter
 - agent 核心能力：
   1. 多会话聊天
   2. 长期记忆
