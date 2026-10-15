@@ -20,6 +20,6 @@
 - 已定栈：SQLite（WAL）+ sqlx（含 sqlx 迁移）
 - 已定栈：前端 React + TypeScript + Tailwind + shadcn/ui，静态文件由 Axum 托管；不用 Vite（主人要求）
 - 已定栈：前端编译 Rsbuild（Rspack）
-- 项目结构：单仓/模块目录（追问中）
-- Rust 与 TS agent 通信方式（待问）
+- 已定栈：单仓；crates/（Cargo workspace，一模块一 crate）、agent/（TS）、web/（React），agent+web 用 pnpm workspace
+- Rust 与 TS agent 通信方式（追问中）
 - Rust 与 TS agent 模块如何通信（phase-01）
