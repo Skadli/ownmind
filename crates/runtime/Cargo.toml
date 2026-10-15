@@ -1,0 +1,17 @@
+[package]
+name = "ownmind-runtime"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+ownmind-kernel = { path = "../kernel" }
+ownmind-settings = { path = "../settings" }
+ownmind-sandbox = { path = "../sandbox" }
+ownmind-conversation = { path = "../conversation" }
+ownmind-memory = { path = "../memory" }
+ownmind-schedule = { path = "../schedule" }
+ownmind-skill = { path = "../skill" }
+
+[lints]
+workspace = true

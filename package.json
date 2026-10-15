@@ -1,0 +1,17 @@
+{
+  "name": "ownmind",
+  "private": true,
+  "packageManager": "pnpm@12.9.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c blue,green \"cargo run -p ownmind-server\" \"pnpm -C web dev\"",
+    "test": "pnpm -r test",
+    "lint": "biome check ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "concurrently": "^10.0.6"
+  }
+}

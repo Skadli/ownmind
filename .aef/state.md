@@ -1,7 +1,7 @@
 # .aef/state.md
 
 ## 当前
-- 阶段：phase-02 行走骨架（拆票待主人确认）
+- 阶段：phase-02 行走骨架
 - 里程碑：M1
 
 ## 里程碑
@@ -12,11 +12,15 @@
 | M3 自己跑（MVP） | 定时任务、其余设置页、一键脚本、发布加固；发布 v0.1.0 | 未开始 |
 | M4 能代办 | 浏览器自动化、第三方账号、passkey；开工前再细化 | 未开始 |
 
-## 本迭代票
-- [ ] NN 标题
+## 本迭代票（phase-02）
+- [x] 01 脚手架与本地一键启动（.aef/tickets/01-scaffold.md）
+- [ ] 02 迁移体系：各模块 sqlx 迁移、server migrate 子命令、空库一条命令建好（首个主人按 stack.md 在首次打开页面时设密码）
+- [ ] 03 登录 + 会话 CRUD（含前端页面）
+- [ ] 04 门禁与 CI：lint/类型、模块边界、迁移不可变 + 空库迁移，GitHub Actions
+- [ ] 05 部署：Dockerfile、Compose、Caddy、先迁移后启动、/healthz（需主人服务器验证）
 
 ## 下一步
-启动语：读 AGENTS.md 和 .aef/state.md，执行 phase-02。
+启动语：读 AGENTS.md 和 .aef/state.md，执行 phase-02 的下一张未完成票。
 
 ## 未决问题
 - 已定栈：Rust 后端 Axum（tokio）
@@ -32,3 +36,4 @@
 - 已定：模块划分（docs/architecture.md、crates/*/module.yaml）
 - 已定：上下文管理（决策 005）
 - 已定：里程碑 M1–M4（phase-01 完成）
+- 未决：开源许可证（Cargo/npm 暂未声明）

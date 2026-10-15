@@ -1,0 +1,11 @@
+[package]
+name = "ownmind-sandbox"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+ownmind-kernel = { path = "../kernel" }
+
+[lints]
+workspace = true

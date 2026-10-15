@@ -1,0 +1,15 @@
+[package]
+name = "ownmind-sandboxd"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[[bin]]
+name = "ownmind-sandboxd"
+path = "src/main.rs"
+
+[dependencies]
+ownmind-kernel = { path = "../kernel" }
+
+[lints]
+workspace = true

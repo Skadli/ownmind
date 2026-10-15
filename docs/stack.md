@@ -58,12 +58,12 @@ deploy/                    # compose.yaml、Caddyfile、install.sh
 | 用途 | 命令 |
 |---|---|
 | 安装依赖 | `pnpm install` |
-| 建库/迁移 | `cargo run -p server -- migrate`（空库一条命令建好；server 启动时也会执行） |
-| 开发运行 | `cargo run -p server` + `pnpm -C web dev` |
+| 建库/迁移 | `cargo run -p ownmind-server -- migrate`（空库一条命令建好；server 启动时也会执行） |
+| 开发运行 | `pnpm dev`（同时起 server 与 web，web 在 :5173，server 在 :8787） |
 | 测试 | `cargo test --workspace && pnpm -r test` |
 | 端到端 | `pnpm -C web e2e` |
-| Lint | `cargo clippy --workspace -- -D warnings && cargo fmt --check && pnpm biome check .` |
-| 生成 TS 类型 | `cargo test -p server export_bindings`（ts-rs） |
+| Lint | `cargo clippy --workspace --all-targets -- -D warnings && cargo fmt --check && pnpm biome check .` |
+| 生成 TS 类型 | `cargo test -p ownmind-server export_bindings`（ts-rs） |
 | 门禁 | `.aef/gates/run-all.sh .` |
 | 本地完整部署 | `docker compose -f deploy/compose.yaml up -d` |
 
@@ -88,7 +88,7 @@ pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 ### 种子数据
 - 参考数据（预设供应商列表等）：迁移里 `INSERT ... ON CONFLICT DO NOTHING`，幂等。
 - 初始化数据：首个主人在首次打开管理页面时自己设密码，仓库内无默认账号。
-- 演示数据：`cargo run -p server -- seed-demo`，只在开发用。
+- 演示数据：`cargo run -p ownmind-server -- seed-demo`，只在开发用。
 
 ### 错误与事务
 - 每个模块一个 `thiserror` 错误枚举；server 统一转 HTTP 状态码。不吞错误，`?` 向上抛。

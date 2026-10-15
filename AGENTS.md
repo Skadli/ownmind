@@ -15,9 +15,9 @@
 ## 命令
 技术细节见 docs/stack.md。
 - 测试：`cargo test --workspace && pnpm -r test`
-- Lint：`cargo clippy --workspace -- -D warnings && cargo fmt --check && pnpm biome check .`
-- 建库：`cargo run -p server -- migrate`
-- 运行：`cargo run -p server` + `pnpm -C web dev`
+- Lint：`cargo clippy --workspace --all-targets -- -D warnings && cargo fmt --check && pnpm biome check .`
+- 建库：`cargo run -p ownmind-server -- migrate`
+- 运行：`pnpm dev`（同时起 server 与 web，web 在 :5173，server 在 :8787）
 - 门禁：`.aef/gates/run-all.sh .`
 
 ## 目录

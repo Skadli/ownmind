@@ -1,0 +1,11 @@
+[package]
+name = "ownmind-schedule"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+ownmind-kernel = { path = "../kernel" }
+
+[lints]
+workspace = true
