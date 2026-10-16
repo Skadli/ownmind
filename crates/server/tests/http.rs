@@ -440,3 +440,50 @@ async fn login_is_throttled_with_429_and_retry_after() {
     assert_eq!(body["error"], "locked");
     assert!(body["retryAfter"].as_i64().unwrap() > 0);
 }
+
+#[tokio::test]
+async fn profile_and_system_settings_over_http() {
+    let mut s = TestServer::start().await;
+    assert_eq!(
+        s.call(Method::GET, "/api/settings/profile", None).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    s.call(
+        Method::POST,
+        "/api/auth/setup",
+        Some(json!({ "password": "correct horse battery" })),
+    )
+    .await;
+    let (_, p) = s.json(Method::GET, "/api/settings/profile", None).await;
+    assert_eq!(p, json!({ "name": "", "preferredName": "", "bio": "" }));
+    let (code, p) = s
+        .json(
+            Method::PUT,
+            "/api/settings/profile",
+            Some(json!({ "name": "Ada", "preferredName": "A", "bio": "" })),
+        )
+        .await;
+    assert_eq!((code, p["name"].clone()), (StatusCode::OK, json!("Ada")));
+    let (code, body) = s
+        .json(
+            Method::PUT,
+            "/api/settings/system",
+            Some(json!({ "language": "en", "timezone": "bad zone!" })),
+        )
+        .await;
+    assert_eq!(
+        (code, body),
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            json!({ "error": "invalid_timezone" })
+        )
+    );
+    let (_, sys) = s
+        .json(
+            Method::PUT,
+            "/api/settings/system",
+            Some(json!({ "language": "en", "timezone": "Europe/Paris" })),
+        )
+        .await;
+    assert_eq!(sys, json!({ "language": "en", "timezone": "Europe/Paris" }));
+}

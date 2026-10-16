@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use ownmind_conversation::api::Conversations;
+use ownmind_settings::api::Settings;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
@@ -25,6 +26,7 @@ type Pending = HashMap<u64, oneshot::Sender<Result<Value, String>>>;
 
 pub(crate) struct Supervisor {
     conversations: Conversations,
+    settings: Settings,
     next_id: AtomicU64,
     pending: Mutex<Pending>,
     runs: Mutex<HashMap<String, mpsc::UnboundedSender<AgentEvent>>>,
@@ -35,10 +37,15 @@ pub(crate) struct Supervisor {
 }
 
 impl Supervisor {
-    pub(crate) fn spawn(cmd: Vec<String>, conversations: Conversations) -> Arc<Self> {
+    pub(crate) fn spawn(
+        cmd: Vec<String>,
+        conversations: Conversations,
+        settings: Settings,
+    ) -> Arc<Self> {
         assert!(!cmd.is_empty(), "agent 命令不能为空");
         let sup = Arc::new(Self {
             conversations,
+            settings,
             next_id: AtomicU64::new(1),
             pending: Mutex::new(HashMap::new()),
             runs: Mutex::new(HashMap::new()),
@@ -175,7 +182,7 @@ impl Supervisor {
     async fn answer(&self, id: Value, method: &str, params: Value) {
         let result = match method {
             "context.build" => match serde_json::from_value::<ContextBuildParams>(params) {
-                Ok(p) => super::context::build(&self.conversations, &p)
+                Ok(p) => super::context::build(&self.conversations, &self.settings, &p)
                     .await
                     .map(|r| to_value(&r)),
                 Err(e) => Err(format!("参数不合法：{e}")),

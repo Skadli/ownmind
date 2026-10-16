@@ -279,7 +279,7 @@ impl Runtime {
     /// 拉起 agent 子进程（cmd 为命令及参数），退出后自动重启。
     pub fn spawn(cmd: Vec<String>, conversations: Conversations, settings: Settings) -> Self {
         Self {
-            sup: Supervisor::spawn(cmd, conversations.clone()),
+            sup: Supervisor::spawn(cmd, conversations.clone(), settings.clone()),
             settings,
             chats: Arc::new(Chats::new(conversations)),
         }

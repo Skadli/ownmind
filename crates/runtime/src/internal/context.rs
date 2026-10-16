@@ -1,6 +1,7 @@
 //! 上下文组装（决策 005）：系统提示 → 摘要 → 摘要后的原文 → 末尾时间片段；超窗 70% 时请求压缩。
 
 use ownmind_conversation::api::{Conversations, Message, Role};
+use ownmind_settings::api::{Profile, Settings};
 use serde_json::{Value, json};
 
 use crate::api::{CompactionRequest, ContextBuildParams, ContextBuildResult};
@@ -15,8 +16,11 @@ const KEEP_TURNS: usize = 6;
 
 pub(crate) async fn build(
     conversations: &Conversations,
+    settings: &Settings,
     p: &ContextBuildParams,
 ) -> Result<ContextBuildResult, String> {
+    let profile = settings.profile().await.map_err(|e| e.to_string())?;
+    let system = settings.system().await.map_err(|e| e.to_string())?;
     let all = conversations
         .messages(&p.conversation_id)
         .await
@@ -32,6 +36,7 @@ pub(crate) async fn build(
     let live: Vec<&Message> = all.iter().filter(|m| m.seq > upto).collect();
 
     let mut system_prompt = SYSTEM_PROMPT.to_owned();
+    system_prompt.push_str(&core_layer(&profile, &system.timezone));
     if let Some(s) = summary {
         system_prompt.push_str("\n\n## 之前对话的摘要\n");
         system_prompt.push_str(s);
@@ -43,13 +48,29 @@ pub(crate) async fn build(
         .flatten();
 
     let mut messages: Vec<Value> = live.iter().map(|m| m.body.clone()).collect();
-    append_time(&mut messages, ownmind_kernel::now_ms());
+    append_time(&mut messages, ownmind_kernel::now_ms(), &system.timezone);
     Ok(ContextBuildResult {
         system_prompt,
         messages,
         estimated_tokens,
         compaction,
     })
+}
+
+/// 核心层：主人资料（决策 005 第 4 层；记忆部分在 M2 加）。
+fn core_layer(p: &Profile, timezone: &str) -> String {
+    let mut lines = vec![];
+    if !p.name.is_empty() {
+        lines.push(format!("- 名字：{}", p.name));
+    }
+    if !p.preferred_name.is_empty() {
+        lines.push(format!("- 称呼：{}", p.preferred_name));
+    }
+    if !p.bio.is_empty() {
+        lines.push(format!("- 简介：{}", p.bio));
+    }
+    lines.push(format!("- 时区：{timezone}"));
+    format!("\n\n## 主人资料\n{}", lines.join("\n"))
 }
 
 /// token 估算：最后一条带 usage 的回复，其 input+output 就是到它为止的上下文；之后的按字符估。
@@ -109,14 +130,17 @@ fn compaction_request(live: &[&Message], previous: Option<&str>) -> Option<Compa
 }
 
 /// 时间放在最后一条主人消息的末尾，前面的内容保持不变，利于提示缓存。
-fn append_time(messages: &mut [Value], now_ms: i64) {
+fn append_time(messages: &mut [Value], now_ms: i64, timezone: &str) {
     let Some(last) = messages.last_mut() else {
         return;
     };
     if last.get("role").and_then(Value::as_str) != Some("user") {
         return;
     }
-    let note = json!({ "type": "text", "text": format!("\n\n<context>当前时间：{}</context>", format_utc(now_ms)) });
+    let note = json!({ "type": "text", "text": format!(
+        "\n\n<context>当前时间：{}（主人时区 {timezone}）</context>",
+        format_utc(now_ms)
+    ) });
     let content = last.get_mut("content");
     match content {
         Some(Value::String(s)) => {
@@ -167,9 +191,22 @@ mod tests {
     }
 
     #[test]
+    fn core_layer_lists_only_filled_fields() {
+        let p = Profile {
+            name: "".into(),
+            preferred_name: "老板".into(),
+            bio: "".into(),
+        };
+        assert_eq!(
+            core_layer(&p, "Asia/Shanghai"),
+            "\n\n## 主人资料\n- 称呼：老板\n- 时区：Asia/Shanghai"
+        );
+    }
+
+    #[test]
     fn time_goes_into_the_last_user_message() {
         let mut msgs = vec![json!({ "role": "user", "content": "hi" })];
-        append_time(&mut msgs, 0);
+        append_time(&mut msgs, 0, "UTC");
         assert_eq!(msgs[0]["content"][0]["text"], "hi");
         assert!(
             msgs[0]["content"][1]["text"]

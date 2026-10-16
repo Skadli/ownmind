@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import { api, type Conversation } from "./api/client";
-import { t } from "./i18n";
-import { AccountPage } from "./pages/AccountPage";
+import { setLanguage } from "./i18n";
 import { ChatPage } from "./pages/ChatPage";
 import { ConversationsPage } from "./pages/ConversationsPage";
 import { PasswordPage } from "./pages/PasswordPage";
-import { SecuritySection } from "./pages/SecuritySection";
+import { SettingsPage } from "./pages/SettingsPage";
 
 type Screen =
   | "loading"
@@ -17,6 +16,21 @@ type Screen =
 
 export function App() {
   const [screen, setScreen] = useState<Screen>("loading");
+  const [langVersion, setLangVersion] = useState(0);
+  const loggedIn =
+    screen !== "loading" && screen !== "setup" && screen !== "login";
+
+  // 登录后按系统偏好设置界面语言。
+  useEffect(() => {
+    if (!loggedIn) return;
+    api.getSystem().then(
+      (s) => {
+        setLanguage(s.language);
+        setLangVersion((n) => n + 1);
+      },
+      () => {},
+    );
+  }, [loggedIn]);
 
   useEffect(() => {
     api
@@ -29,6 +43,7 @@ export function App() {
   if (typeof screen === "object")
     return (
       <ChatPage
+        key={langVersion}
         conversation={screen.chat}
         onBack={() => setScreen("home")}
         onLoggedOut={() => setScreen("login")}
@@ -62,6 +77,7 @@ export function App() {
     case "home":
       return (
         <ConversationsPage
+          key={langVersion}
           onLoggedOut={() => setScreen("login")}
           onOpenSettings={() => setScreen("settings")}
           onOpen={(c) => setScreen({ chat: c })}
@@ -69,17 +85,12 @@ export function App() {
       );
     case "settings":
       return (
-        <main className="mx-auto max-w-2xl space-y-6 px-4 py-10">
-          <button
-            type="button"
-            onClick={() => setScreen("home")}
-            className="text-sm text-neutral-500 hover:text-neutral-900"
-          >
-            ← {t("nav.back")}
-          </button>
-          <AccountPage onUnauthenticated={() => setScreen("login")} />
-          <SecuritySection onUnauthenticated={() => setScreen("login")} />
-        </main>
+        <SettingsPage
+          key={langVersion}
+          onBack={() => setScreen("home")}
+          onLoggedOut={() => setScreen("login")}
+          onLanguageChange={() => setLangVersion((n) => n + 1)}
+        />
       );
   }
 }

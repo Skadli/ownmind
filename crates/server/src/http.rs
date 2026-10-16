@@ -14,7 +14,9 @@ use axum_extra::extract::cookie::{Cookie, SameSite};
 use ownmind_auth::api::{AuthError, SESSION_TTL_MS};
 use ownmind_conversation::api::{Conversation, ConversationError, Message};
 use ownmind_runtime::api::{ChatEvent, RuntimeError};
-use ownmind_settings::api::{Credential, CredentialInput, DefaultModel, SettingsError};
+use ownmind_settings::api::{
+    Credential, CredentialInput, DefaultModel, Profile, SettingsError, SystemPrefs,
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tower_http::services::{ServeDir, ServeFile};
@@ -55,6 +57,8 @@ pub fn router(app: App, web_dir: &Path) -> Router {
             "/settings/credentials/{id}",
             patch(update_credential).delete(delete_credential),
         )
+        .route("/settings/profile", get(get_profile).put(put_profile))
+        .route("/settings/system", get(get_system).put(put_system))
         .route(
             "/settings/default-model",
             get(get_default_model).put(put_default_model),
@@ -120,6 +124,8 @@ impl From<SettingsError> for ApiError {
             SettingsError::InvalidBaseUrl => unprocessable("invalid_base_url"),
             SettingsError::MissingKey => unprocessable("missing_key"),
             SettingsError::InvalidModel => unprocessable("invalid_model"),
+            SettingsError::InvalidProfile => unprocessable("invalid_profile"),
+            SettingsError::InvalidTimezone => unprocessable("invalid_timezone"),
             SettingsError::NoDefaultModel => Self(StatusCode::CONFLICT, "no_default_model"),
             SettingsError::Secret(e) => internal(e),
             SettingsError::Db(e) => internal(e),
@@ -467,4 +473,30 @@ async fn put_default_model(
 ) -> Result<StatusCode, ApiError> {
     app.settings.set_default_model(body).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------- 设置：个人资料与系统偏好 ----------
+
+async fn get_profile(_: Owner, State(app): State<App>) -> Result<Json<Profile>, ApiError> {
+    Ok(Json(app.settings.profile().await?))
+}
+
+async fn put_profile(
+    _: Owner,
+    State(app): State<App>,
+    Json(body): Json<Profile>,
+) -> Result<Json<Profile>, ApiError> {
+    Ok(Json(app.settings.set_profile(body).await?))
+}
+
+async fn get_system(_: Owner, State(app): State<App>) -> Result<Json<SystemPrefs>, ApiError> {
+    Ok(Json(app.settings.system().await?))
+}
+
+async fn put_system(
+    _: Owner,
+    State(app): State<App>,
+    Json(body): Json<SystemPrefs>,
+) -> Result<Json<SystemPrefs>, ApiError> {
+    Ok(Json(app.settings.set_system(body).await?))
 }

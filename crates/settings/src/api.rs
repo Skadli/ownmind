@@ -12,6 +12,51 @@ pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 const MAX_LABEL_CHARS: usize = 100;
 const DEFAULT_MODEL_KEY: &str = "default_model";
+const PROFILE_KEY: &str = "profile";
+const SYSTEM_KEY: &str = "system";
+const MAX_NAME_CHARS: usize = 100;
+const MAX_BIO_CHARS: usize = 2000;
+
+/// 主人资料：放进上下文的核心层，让 agent 知道在和谁说话。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export, export_to = "settings.ts", rename_all = "camelCase")]
+pub struct Profile {
+    pub name: String,
+    /// 希望 agent 怎么称呼主人。
+    pub preferred_name: String,
+    pub bio: String,
+}
+
+/// 界面语言。auto 跟随浏览器。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "settings.ts", rename_all = "lowercase")]
+pub enum Language {
+    #[default]
+    Auto,
+    Zh,
+    En,
+}
+
+/// 系统偏好。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export, export_to = "settings.ts", rename_all = "camelCase")]
+pub struct SystemPrefs {
+    pub language: Language,
+    /// IANA 时区名，如 Asia/Shanghai。
+    pub timezone: String,
+}
+
+impl Default for SystemPrefs {
+    fn default() -> Self {
+        Self {
+            language: Language::Auto,
+            timezone: "UTC".into(),
+        }
+    }
+}
 
 /// 模型供应商种类（SCOPE 预设顺序）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -121,6 +166,10 @@ pub enum SettingsError {
     InvalidModel,
     #[error("还没有设置默认模型")]
     NoDefaultModel,
+    #[error("名字与称呼不超过 {MAX_NAME_CHARS} 个字符，简介不超过 {MAX_BIO_CHARS} 个字符")]
+    InvalidProfile,
+    #[error("时区不合法")]
+    InvalidTimezone,
     #[error(transparent)]
     Secret(#[from] ownmind_kernel::SecretError),
     #[error(transparent)]
@@ -320,6 +369,76 @@ impl Settings {
         )
         .bind(DEFAULT_MODEL_KEY)
         .bind(value)
+        .bind(ownmind_kernel::now_ms())
+        .execute(&self.db)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn profile(&self) -> Result<Profile, SettingsError> {
+        self.get_pref(PROFILE_KEY).await
+    }
+
+    pub async fn set_profile(&self, p: Profile) -> Result<Profile, SettingsError> {
+        let p = Profile {
+            name: p.name.trim().to_owned(),
+            preferred_name: p.preferred_name.trim().to_owned(),
+            bio: p.bio.trim().to_owned(),
+        };
+        let too_long = |s: &str, max| s.chars().count() > max;
+        if too_long(&p.name, MAX_NAME_CHARS)
+            || too_long(&p.preferred_name, MAX_NAME_CHARS)
+            || too_long(&p.bio, MAX_BIO_CHARS)
+        {
+            return Err(SettingsError::InvalidProfile);
+        }
+        self.put_pref(PROFILE_KEY, &p).await?;
+        Ok(p)
+    }
+
+    pub async fn system(&self) -> Result<SystemPrefs, SettingsError> {
+        self.get_pref(SYSTEM_KEY).await
+    }
+
+    pub async fn set_system(&self, p: SystemPrefs) -> Result<SystemPrefs, SettingsError> {
+        let tz = p.timezone.trim();
+        let ok = !tz.is_empty()
+            && tz.len() <= 64
+            && tz
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "/_+-".contains(c));
+        if !ok {
+            return Err(SettingsError::InvalidTimezone);
+        }
+        let p = SystemPrefs {
+            language: p.language,
+            timezone: tz.to_owned(),
+        };
+        self.put_pref(SYSTEM_KEY, &p).await?;
+        Ok(p)
+    }
+
+    async fn get_pref<T: serde::de::DeserializeOwned + Default>(
+        &self,
+        key: &str,
+    ) -> Result<T, SettingsError> {
+        let value: Option<String> =
+            sqlx::query_scalar("SELECT value FROM settings_preference WHERE key = ?")
+                .bind(key)
+                .fetch_optional(&self.db)
+                .await?;
+        Ok(value
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or_default())
+    }
+
+    async fn put_pref<T: Serialize>(&self, key: &str, value: &T) -> Result<(), SettingsError> {
+        sqlx::query(
+            "INSERT INTO settings_preference (key, value, updated_at) VALUES (?, ?, ?) \
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        )
+        .bind(key)
+        .bind(serde_json::to_string(value).expect("可序列化"))
         .bind(ownmind_kernel::now_ms())
         .execute(&self.db)
         .await?;

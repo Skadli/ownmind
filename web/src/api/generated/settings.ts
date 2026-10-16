@@ -13,6 +13,29 @@ export type CredentialInput = { kind: ProviderKind, label: string, baseUrl?: str
 export type DefaultModel = { credentialId: string, modelId: string, };
 
 /**
+ * 界面语言。auto 跟随浏览器。
+ */
+export type Language = "auto" | "zh" | "en";
+
+/**
+ * 主人资料：放进上下文的核心层，让 agent 知道在和谁说话。
+ */
+export type Profile = { name: string, 
+/**
+ * 希望 agent 怎么称呼主人。
+ */
+preferredName: string, bio: string, };
+
+/**
  * 模型供应商种类（SCOPE 预设顺序）。
  */
 export type ProviderKind = "openai-compatible" | "anthropic-compatible" | "openai" | "anthropic" | "google" | "deepseek" | "openrouter";
+
+/**
+ * 系统偏好。
+ */
+export type SystemPrefs = { language: Language, 
+/**
+ * IANA 时区名，如 Asia/Shanghai。
+ */
+timezone: string, };

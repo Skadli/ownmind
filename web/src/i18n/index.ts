@@ -15,9 +15,28 @@ export function pickMessages(languages: readonly string[]): Messages {
   return zh;
 }
 
-const messages = pickMessages(
-  typeof navigator === "undefined" ? [] : navigator.languages,
-);
+const LANG_STORAGE = "ownmind.language";
+
+function browserLanguages(): readonly string[] {
+  return typeof navigator === "undefined" ? [] : navigator.languages;
+}
+
+function initialLanguages(): readonly string[] {
+  const saved =
+    typeof localStorage === "undefined"
+      ? null
+      : localStorage.getItem(LANG_STORAGE);
+  return saved && saved !== "auto" ? [saved] : browserLanguages();
+}
+
+let messages = pickMessages(initialLanguages());
+
+/** 切换界面语言（auto 跟随浏览器），并记住以便登录页也用它。调用方负责重新渲染。 */
+export function setLanguage(lang: "auto" | "zh" | "en") {
+  if (typeof localStorage !== "undefined")
+    localStorage.setItem(LANG_STORAGE, lang);
+  messages = pickMessages(lang === "auto" ? browserLanguages() : [lang]);
+}
 
 export function t(key: MessageKey): string {
   return messages[key];

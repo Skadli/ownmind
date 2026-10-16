@@ -1,5 +1,8 @@
 use ownmind_kernel::MasterKey;
-use ownmind_settings::api::{CredentialInput, DefaultModel, ProviderKind, Settings, SettingsError};
+use ownmind_settings::api::{
+    CredentialInput, DefaultModel, Language, Profile, ProviderKind, Settings, SettingsError,
+    SystemPrefs,
+};
 use sqlx::SqlitePool;
 
 async fn settings() -> (tempfile::TempDir, SqlitePool, Settings) {
@@ -114,4 +117,45 @@ async fn default_model_must_point_at_an_existing_credential() {
         })
         .await;
     assert!(matches!(r, Err(SettingsError::NotFound)));
+}
+
+#[tokio::test]
+async fn profile_and_system_prefs_round_trip_with_validation() {
+    let (_d, _pool, s) = settings().await;
+    assert_eq!(s.profile().await.unwrap(), Profile::default());
+    assert_eq!(s.system().await.unwrap().timezone, "UTC");
+
+    let saved = s
+        .set_profile(Profile {
+            name: " 张三 ".into(),
+            preferred_name: "老张".into(),
+            bio: "做后端".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(saved.name, "张三");
+    assert_eq!(s.profile().await.unwrap(), saved);
+    assert!(matches!(
+        s.set_profile(Profile {
+            bio: "x".repeat(2001),
+            ..Profile::default()
+        })
+        .await,
+        Err(SettingsError::InvalidProfile)
+    ));
+
+    let sys = SystemPrefs {
+        language: Language::Zh,
+        timezone: "Asia/Shanghai".into(),
+    };
+    assert_eq!(s.set_system(sys.clone()).await.unwrap(), sys);
+    assert_eq!(s.system().await.unwrap(), sys);
+    assert!(matches!(
+        s.set_system(SystemPrefs {
+            timezone: "Asia/Shanghai; DROP".into(),
+            ..sys
+        })
+        .await,
+        Err(SettingsError::InvalidTimezone)
+    ));
 }

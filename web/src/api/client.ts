@@ -4,7 +4,10 @@ import type {
   Credential,
   CredentialInput,
   DefaultModel,
+  Language,
+  Profile,
   ProviderKind,
+  SystemPrefs,
 } from "./generated/settings";
 import { SseParser } from "./sse";
 
@@ -14,8 +17,11 @@ export type {
   Credential,
   CredentialInput,
   DefaultModel,
+  Language,
   Message,
+  Profile,
   ProviderKind,
+  SystemPrefs,
 };
 
 /** 接口错误，code 对应后端的 `{"error": code}`。 */
@@ -81,6 +87,11 @@ export const api = {
     request<Credential>("PATCH", `/settings/credentials/${id}`, input),
   deleteCredential: (id: string) =>
     request<void>("DELETE", `/settings/credentials/${id}`),
+  getProfile: () => request<Profile>("GET", "/settings/profile"),
+  setProfile: (p: Profile) => request<Profile>("PUT", "/settings/profile", p),
+  getSystem: () => request<SystemPrefs>("GET", "/settings/system"),
+  setSystem: (p: SystemPrefs) =>
+    request<SystemPrefs>("PUT", "/settings/system", p),
   getDefaultModel: () =>
     request<DefaultModel | null>("GET", "/settings/default-model"),
   setDefaultModel: (model: DefaultModel) =>
