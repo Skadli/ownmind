@@ -6,6 +6,12 @@ use ownmind_server::{App, migrate, open_db, router};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
+fn fake_agent() -> Vec<String> {
+    let script =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../runtime/tests/fake_agent.mjs");
+    vec!["node".into(), script.display().to_string()]
+}
+
 struct TestServer {
     _dir: tempfile::TempDir,
     router: Router,
@@ -21,7 +27,10 @@ impl TestServer {
         std::fs::write(web.join("app.js"), "console.log(1)").unwrap();
         let pool = open_db(&dir.path().join("data")).await.unwrap();
         migrate(&pool).await.unwrap();
-        let router = router(App::new(pool, ownmind_kernel::MasterKey::random()), &web);
+        let router = router(
+            App::new(pool, ownmind_kernel::MasterKey::random(), fake_agent()),
+            &web,
+        );
         Self {
             _dir: dir,
             router,
@@ -295,4 +304,62 @@ async fn account_credentials_over_http_never_return_the_key() {
         .json(Method::GET, "/api/settings/default-model", None)
         .await;
     assert_eq!(model, Value::Null);
+}
+
+#[tokio::test]
+async fn chat_streams_over_sse_and_persists() {
+    let mut s = TestServer::start().await;
+    s.call(
+        Method::POST,
+        "/api/auth/setup",
+        Some(json!({ "password": "correct horse battery" })),
+    )
+    .await;
+    let (_, conv) = s
+        .json(Method::POST, "/api/conversations", Some(json!({})))
+        .await;
+    let path = format!(
+        "/api/conversations/{}/messages",
+        conv["id"].as_str().unwrap()
+    );
+
+    // 没配置默认模型：明确报错，不存消息。
+    let (code, body) = s
+        .json(Method::POST, &path, Some(json!({ "text": "你好" })))
+        .await;
+    assert_eq!(
+        (code, body),
+        (StatusCode::CONFLICT, json!({ "error": "no_default_model" }))
+    );
+
+    let (_, cred) = s
+        .json(
+            Method::POST,
+            "/api/settings/credentials",
+            Some(json!({ "kind": "openai", "label": "OpenAI", "apiKey": "sk-1234" })),
+        )
+        .await;
+    s.call(
+        Method::PUT,
+        "/api/settings/default-model",
+        Some(json!({ "credentialId": cred["id"], "modelId": "gpt-x" })),
+    )
+    .await;
+
+    let (code, sse) = s
+        .call(Method::POST, &path, Some(json!({ "text": "你好" })))
+        .await;
+    assert_eq!(code, StatusCode::OK);
+    let names: Vec<&str> = sse
+        .lines()
+        .filter_map(|l| l.strip_prefix("event: "))
+        .collect();
+    assert_eq!(names, ["user", "delta", "delta", "done"]);
+    assert!(sse.contains("1 条消息，模型 gpt-x"));
+
+    let (_, msgs) = s.json(Method::GET, &path, None).await;
+    let msgs = msgs.as_array().unwrap();
+    assert_eq!(msgs.len(), 2);
+    assert_eq!(msgs[1]["role"], "assistant");
+    assert_eq!(msgs[1]["outputTokens"], 5);
 }

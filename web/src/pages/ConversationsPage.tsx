@@ -2,9 +2,17 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { ApiError, api, type Conversation } from "../api/client";
 import { errorText, t } from "../i18n";
 
-type Props = { onLoggedOut: () => void; onOpenSettings: () => void };
+type Props = {
+  onLoggedOut: () => void;
+  onOpenSettings: () => void;
+  onOpen: (c: Conversation) => void;
+};
 
-export function ConversationsPage({ onLoggedOut, onOpenSettings }: Props) {
+export function ConversationsPage({
+  onLoggedOut,
+  onOpenSettings,
+  onOpen,
+}: Props) {
   const [items, setItems] = useState<Conversation[]>([]);
   const [editing, setEditing] = useState<{ id: string; title: string } | null>(
     null,
@@ -36,8 +44,7 @@ export function ConversationsPage({ onLoggedOut, onOpenSettings }: Props) {
 
   const create = () =>
     run(async () => {
-      await api.createConversation();
-      await reload();
+      onOpen(await api.createConversation());
     });
 
   const saveTitle = (e: FormEvent) => {
@@ -102,7 +109,7 @@ export function ConversationsPage({ onLoggedOut, onOpenSettings }: Props) {
               {editing?.id === c.id ? (
                 <form onSubmit={saveTitle} className="flex flex-1 gap-2">
                   <input
-                    value={editing.title}
+                    value={editing?.title ?? ""}
                     onChange={(e) =>
                       setEditing({ id: c.id, title: e.target.value })
                     }
@@ -121,7 +128,13 @@ export function ConversationsPage({ onLoggedOut, onOpenSettings }: Props) {
                 </form>
               ) : (
                 <>
-                  <span className="flex-1 truncate">{c.title}</span>
+                  <button
+                    type="button"
+                    onClick={() => onOpen(c)}
+                    className="flex-1 truncate text-left hover:underline"
+                  >
+                    {c.title}
+                  </button>
                   <button
                     type="button"
                     onClick={() => setEditing({ id: c.id, title: c.title })}

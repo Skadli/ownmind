@@ -65,4 +65,17 @@ export const en: Messages = {
   "error.invalid_model": "Enter a model ID.",
   "error.no_default_model":
     "No default model yet. Add one in Settings → Account.",
+  "chat.placeholder":
+    "Message Ownmind… (Enter to send, Shift+Enter for a new line)",
+  "chat.send": "Send",
+  "chat.stop": "Stop",
+  "chat.empty": "Say something to get started.",
+  "chat.thinking": "Thinking…",
+  "chat.running": "The previous reply is still being written…",
+  "chat.goSettings": "Set up a model",
+  "error.busy": "This conversation is already replying. Wait or stop it first.",
+  "error.not_running": "Nothing is running.",
+  "error.empty_message": "Message can't be empty.",
+  "error.agent_unavailable":
+    "The agent process is unavailable. Try again shortly.",
 };

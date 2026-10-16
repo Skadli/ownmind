@@ -9,6 +9,7 @@ use std::str::FromStr;
 use ownmind_auth::api::Auth;
 use ownmind_conversation::api::Conversations;
 use ownmind_kernel::MasterKey;
+use ownmind_runtime::api::Runtime;
 use ownmind_settings::api::Settings;
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
@@ -19,6 +20,8 @@ pub struct Config {
     pub addr: SocketAddr,
     pub web_dir: PathBuf,
     pub data_dir: PathBuf,
+    /// 启动 agent 子进程的命令（空格分隔）。
+    pub agent_cmd: Vec<String>,
 }
 
 impl Config {
@@ -27,7 +30,12 @@ impl Config {
         let addr = std::env::var("OWNMIND_ADDR").unwrap_or_else(|_| "127.0.0.1:8787".into());
         let web_dir = std::env::var("OWNMIND_WEB_DIR").unwrap_or_else(|_| "web/dist".into());
         let data_dir = std::env::var("OWNMIND_DATA_DIR").unwrap_or_else(|_| "data".into());
+        let agent_cmd = std::env::var("OWNMIND_AGENT_CMD")
+            .unwrap_or_else(|_| "node agent/dist/index.js".into());
+        let agent_cmd: Vec<String> = agent_cmd.split_whitespace().map(str::to_owned).collect();
+        anyhow::ensure!(!agent_cmd.is_empty(), "OWNMIND_AGENT_CMD 不能为空");
         Ok(Self {
+            agent_cmd,
             addr: addr.parse()?,
             web_dir: web_dir.into(),
             data_dir: data_dir.into(),
@@ -41,14 +49,20 @@ pub struct App {
     pub auth: Auth,
     pub conversations: Conversations,
     pub settings: Settings,
+    pub runtime: Runtime,
 }
 
 impl App {
-    pub fn new(db: SqlitePool, key: MasterKey) -> Self {
+    /// 组装各模块并拉起 agent 子进程。需要在 tokio 运行时里调用。
+    pub fn new(db: SqlitePool, key: MasterKey, agent_cmd: Vec<String>) -> Self {
+        let conversations = Conversations::new(db.clone());
+        let settings = Settings::new(db.clone(), key);
+        let runtime = Runtime::spawn(agent_cmd, conversations.clone(), settings.clone());
         Self {
-            auth: Auth::new(db.clone()),
-            conversations: Conversations::new(db.clone()),
-            settings: Settings::new(db, key),
+            auth: Auth::new(db),
+            conversations,
+            settings,
+            runtime,
         }
     }
 }

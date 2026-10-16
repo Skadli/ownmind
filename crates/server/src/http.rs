@@ -5,6 +5,7 @@ use std::path::Path;
 use axum::extract::{FromRequestParts, Path as UrlPath, State};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, StatusCode, header};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
@@ -12,6 +13,7 @@ use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use ownmind_auth::api::{AuthError, SESSION_TTL_MS};
 use ownmind_conversation::api::{Conversation, ConversationError, Message};
+use ownmind_runtime::api::{ChatEvent, RuntimeError};
 use ownmind_settings::api::{Credential, CredentialInput, DefaultModel, SettingsError};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -36,7 +38,11 @@ pub fn router(app: App, web_dir: &Path) -> Router {
             "/conversations/{id}",
             patch(rename_conversation).delete(delete_conversation),
         )
-        .route("/conversations/{id}/messages", get(list_messages))
+        .route(
+            "/conversations/{id}/messages",
+            get(list_messages).post(send_message),
+        )
+        .route("/conversations/{id}/run", get(run_status).delete(stop_run))
         .route(
             "/settings/credentials",
             get(list_credentials).post(create_credential),
@@ -108,6 +114,23 @@ impl From<SettingsError> for ApiError {
             SettingsError::NoDefaultModel => Self(StatusCode::CONFLICT, "no_default_model"),
             SettingsError::Secret(e) => internal(e),
             SettingsError::Db(e) => internal(e),
+        }
+    }
+}
+
+impl From<RuntimeError> for ApiError {
+    fn from(e: RuntimeError) -> Self {
+        match e {
+            RuntimeError::Settings(e) => e.into(),
+            RuntimeError::Conversation(e) => e.into(),
+            RuntimeError::Busy => Self(StatusCode::CONFLICT, "busy"),
+            RuntimeError::NotRunning => Self(StatusCode::CONFLICT, "not_running"),
+            RuntimeError::EmptyMessage => Self(StatusCode::UNPROCESSABLE_ENTITY, "empty_message"),
+            RuntimeError::AgentUnavailable(m) => {
+                tracing::error!(error = %m, "agent unavailable");
+                Self(StatusCode::SERVICE_UNAVAILABLE, "agent_unavailable")
+            }
+            RuntimeError::Agent(m) => internal(m),
         }
     }
 }
@@ -262,6 +285,64 @@ async fn list_messages(
     UrlPath(id): UrlPath<String>,
 ) -> Result<Json<Vec<Message>>, ApiError> {
     Ok(Json(app.conversations.messages(&id).await?))
+}
+
+#[derive(Deserialize)]
+struct SendBody {
+    text: String,
+}
+
+/// 发消息：返回 SSE。事件名即 ChatEvent 的 type，data 为整个事件 JSON。
+async fn send_message(
+    _: Owner,
+    State(app): State<App>,
+    UrlPath(id): UrlPath<String>,
+    Json(body): Json<SendBody>,
+) -> Result<Response, ApiError> {
+    let rx = app.runtime.send(&id, &body.text).await?;
+    let stream = futures_util::stream::unfold((rx, false), |(mut rx, done)| async move {
+        if done {
+            return None;
+        }
+        loop {
+            match rx.recv().await {
+                Ok(ev) => {
+                    let fin = ev.is_final();
+                    let name = match &ev {
+                        ChatEvent::User { .. } => "user",
+                        ChatEvent::Delta { .. } => "delta",
+                        ChatEvent::Thinking { .. } => "thinking",
+                        ChatEvent::Done { .. } => "done",
+                        ChatEvent::Error { .. } => "error",
+                    };
+                    let event = Event::default()
+                        .event(name)
+                        .json_data(&ev)
+                        .unwrap_or_default();
+                    return Some((Ok::<_, std::convert::Infallible>(event), (rx, fin)));
+                }
+                // 消费太慢丢了一些增量：继续读，最终 done 里有完整文本。
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => return None,
+            }
+        }
+    });
+    Ok(Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response())
+}
+
+async fn run_status(_: Owner, State(app): State<App>, UrlPath(id): UrlPath<String>) -> Json<Value> {
+    Json(json!({ "running": app.runtime.is_running(&id).await }))
+}
+
+async fn stop_run(
+    _: Owner,
+    State(app): State<App>,
+    UrlPath(id): UrlPath<String>,
+) -> Result<StatusCode, ApiError> {
+    app.runtime.stop(&id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ---------- 设置：账户 ----------

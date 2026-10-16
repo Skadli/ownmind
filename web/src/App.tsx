@@ -1,11 +1,18 @@
 import { useEffect, useState } from "react";
-import { api } from "./api/client";
+import { api, type Conversation } from "./api/client";
 import { t } from "./i18n";
 import { AccountPage } from "./pages/AccountPage";
+import { ChatPage } from "./pages/ChatPage";
 import { ConversationsPage } from "./pages/ConversationsPage";
 import { PasswordPage } from "./pages/PasswordPage";
 
-type Screen = "loading" | "setup" | "login" | "home" | "settings";
+type Screen =
+  | "loading"
+  | "setup"
+  | "login"
+  | "home"
+  | "settings"
+  | { chat: Conversation };
 
 export function App() {
   const [screen, setScreen] = useState<Screen>("loading");
@@ -17,6 +24,16 @@ export function App() {
         setScreen(!s.isSetUp ? "setup" : s.isLoggedIn ? "home" : "login"),
       );
   }, []);
+
+  if (typeof screen === "object")
+    return (
+      <ChatPage
+        conversation={screen.chat}
+        onBack={() => setScreen("home")}
+        onLoggedOut={() => setScreen("login")}
+        onOpenSettings={() => setScreen("settings")}
+      />
+    );
 
   switch (screen) {
     case "loading":
@@ -46,6 +63,7 @@ export function App() {
         <ConversationsPage
           onLoggedOut={() => setScreen("login")}
           onOpenSettings={() => setScreen("settings")}
+          onOpen={(c) => setScreen({ chat: c })}
         />
       );
     case "settings":

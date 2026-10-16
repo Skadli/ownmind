@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use ownmind_conversation::api::{Conversations, NewMessage, Role};
 use ownmind_kernel::MasterKey;
-use ownmind_runtime::api::{AgentEvent, Runtime, RuntimeError, Usage};
+use ownmind_runtime::api::{AgentEvent, ChatEvent, Runtime, RuntimeError, Usage};
 use ownmind_settings::api::{CredentialInput, DefaultModel, ProviderKind, Settings};
 use sqlx::SqlitePool;
 
@@ -173,4 +173,81 @@ async fn missing_default_model_is_reported_before_contacting_agent() {
         rt.start_run("x").await,
         Err(RuntimeError::Settings(_))
     ));
+}
+
+async fn drain(mut rx: tokio::sync::broadcast::Receiver<ChatEvent>) -> Vec<ChatEvent> {
+    let mut out = vec![];
+    while let Ok(e) = rx.recv().await {
+        let fin = e.is_final();
+        out.push(e);
+        if fin {
+            break;
+        }
+    }
+    out
+}
+
+#[tokio::test]
+async fn send_saves_both_messages_and_streams() {
+    let e = env("m").await;
+    let conv = e.convs.create(None).await.unwrap();
+    let rt = Runtime::spawn(fake_cmd(), e.convs.clone(), e.settings.clone());
+    let events = drain(rt.send(&conv.id, " 你好 ").await.unwrap()).await;
+    assert!(matches!(&events[0], ChatEvent::User { message } if message.text == "你好"));
+    assert!(matches!(&events[1], ChatEvent::Delta { .. }));
+    let ChatEvent::Done { message } = events.last().unwrap() else {
+        panic!("期望 done：{events:?}");
+    };
+    assert_eq!(message.text, "1 条消息，模型 m");
+    assert_eq!(message.output_tokens, Some(5));
+    assert_eq!(e.convs.messages(&conv.id).await.unwrap().len(), 2);
+    // 运行结束后可以再发。
+    while rt.is_running(&conv.id).await {
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    let events = drain(rt.send(&conv.id, "再来").await.unwrap()).await;
+    assert!(
+        matches!(events.last().unwrap(), ChatEvent::Done { message } if message.text.starts_with("3 条"))
+    );
+}
+
+#[tokio::test]
+async fn one_run_per_conversation_and_stop_works() {
+    let e = env("slow").await;
+    let conv = e.convs.create(None).await.unwrap();
+    let rt = Runtime::spawn(fake_cmd(), e.convs.clone(), e.settings.clone());
+    let rx = rt.send(&conv.id, "a").await.unwrap();
+    assert!(matches!(
+        rt.send(&conv.id, "b").await,
+        Err(RuntimeError::Busy)
+    ));
+    rt.stop(&conv.id).await.unwrap();
+    assert!(matches!(
+        drain(rx).await.last(),
+        Some(ChatEvent::Error { .. })
+    ));
+    assert!(matches!(
+        rt.stop(&conv.id).await,
+        Err(RuntimeError::NotRunning)
+    ));
+    // 只存了主人消息。
+    assert_eq!(e.convs.messages(&conv.id).await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn send_rejects_empty_and_unconfigured() {
+    let e = env("m").await;
+    let conv = e.convs.create(None).await.unwrap();
+    let rt = Runtime::spawn(fake_cmd(), e.convs.clone(), e.settings.clone());
+    assert!(matches!(
+        rt.send(&conv.id, "  ").await,
+        Err(RuntimeError::EmptyMessage)
+    ));
+    let creds = e.settings.list_credentials().await.unwrap();
+    e.settings.delete_credential(&creds[0].id).await.unwrap();
+    assert!(matches!(
+        rt.send(&conv.id, "hi").await,
+        Err(RuntimeError::Settings(_))
+    ));
+    assert!(e.convs.messages(&conv.id).await.unwrap().is_empty());
 }

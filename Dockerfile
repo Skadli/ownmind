@@ -8,9 +8,13 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY web/package.json web/
 COPY agent/package.json agent/
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --filter @ownmind/web...
+    pnpm install --frozen-lockfile
 COPY web web
-RUN pnpm -C web build
+COPY agent agent
+RUN pnpm -C web build \
+ && pnpm -C agent build \
+ && pnpm --filter @ownmind/agent deploy --prod --legacy /out/agent \
+ && cp -r agent/dist /out/agent/dist
 
 FROM rust:1-bookworm AS server
 WORKDIR /src
@@ -29,7 +33,9 @@ RUN apt-get update \
  && mkdir -p /data && chown ownmind /data
 COPY --from=server /usr/local/bin/ownmind /usr/local/bin/ownmind
 COPY --from=web /src/web/dist /app/web
+COPY --from=web /out/agent /app/agent
 ENV OWNMIND_ADDR=0.0.0.0:8787 \
+    OWNMIND_AGENT_CMD="node /app/agent/dist/index.js" \
     OWNMIND_WEB_DIR=/app/web \
     OWNMIND_DATA_DIR=/data
 USER ownmind

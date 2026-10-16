@@ -2,13 +2,13 @@
 
 use std::sync::Arc;
 
-use ownmind_conversation::api::Conversations;
+use ownmind_conversation::api::{ConversationError, Conversations, Message};
 use ownmind_settings::api::{Settings, SettingsError};
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 use ts_rs::TS;
 
-use crate::internal::Supervisor;
+use crate::internal::{Chats, Supervisor};
 
 /// 协议版本：握手时双方必须一致。
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -180,6 +180,46 @@ pub enum RuntimeError {
     Agent(String),
     #[error(transparent)]
     Settings(#[from] SettingsError),
+    #[error(transparent)]
+    Conversation(#[from] ConversationError),
+    #[error("该会话已有进行中的回复")]
+    Busy,
+    #[error("消息不能为空")]
+    EmptyMessage,
+    #[error("该会话没有进行中的回复")]
+    NotRunning,
+}
+
+/// 聊天流事件（给浏览器的 SSE）。
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(tag = "type", rename_all = "snake_case")]
+#[ts(export, export_to = "chat.ts", tag = "type", rename_all = "snake_case")]
+pub enum ChatEvent {
+    /// 主人消息已保存。
+    User {
+        #[ts(type = "import(\"./conversation\").Message")]
+        message: Message,
+    },
+    Delta {
+        delta: String,
+    },
+    Thinking {
+        delta: String,
+    },
+    /// 回复完成并已保存。
+    Done {
+        #[ts(type = "import(\"./conversation\").Message")]
+        message: Message,
+    },
+    Error {
+        message: String,
+    },
+}
+
+impl ChatEvent {
+    pub fn is_final(&self) -> bool {
+        matches!(self, Self::Done { .. } | Self::Error { .. })
+    }
 }
 
 /// 一次运行：事件流在 done 或 error 后结束。
@@ -193,15 +233,42 @@ pub struct Run {
 pub struct Runtime {
     sup: Arc<Supervisor>,
     settings: Settings,
+    chats: Arc<Chats>,
 }
 
 impl Runtime {
     /// 拉起 agent 子进程（cmd 为命令及参数），退出后自动重启。
     pub fn spawn(cmd: Vec<String>, conversations: Conversations, settings: Settings) -> Self {
         Self {
-            sup: Supervisor::spawn(cmd, conversations),
+            sup: Supervisor::spawn(cmd, conversations.clone()),
             settings,
+            chats: Arc::new(Chats::new(conversations)),
         }
+    }
+
+    /// 主人发一条消息：保存它、启动回复，返回事件流。
+    /// 同一会话同时只允许一个回复；浏览器断开不影响回复继续并保存。
+    pub async fn send(
+        &self,
+        conversation_id: &str,
+        text: &str,
+    ) -> Result<broadcast::Receiver<ChatEvent>, RuntimeError> {
+        self.chats.send(self, conversation_id, text).await
+    }
+
+    /// 中止会话里进行中的回复。
+    pub async fn stop(&self, conversation_id: &str) -> Result<(), RuntimeError> {
+        let run_id = self
+            .chats
+            .active_run(conversation_id)
+            .await
+            .ok_or(RuntimeError::NotRunning)?;
+        self.cancel(&run_id).await
+    }
+
+    /// 会话是否有进行中的回复。
+    pub async fn is_running(&self, conversation_id: &str) -> bool {
+        self.chats.active_run(conversation_id).await.is_some()
     }
 
     /// 用默认模型在会话上启动一次运行。会话里的消息由调用方事先存好。
@@ -219,5 +286,15 @@ impl Runtime {
     /// 中止运行；运行随后以 error 事件结束。
     pub async fn cancel(&self, run_id: &str) -> Result<(), RuntimeError> {
         self.sup.cancel(run_id).await
+    }
+}
+
+impl Runtime {
+    pub(crate) fn settings_ref(&self) -> &Settings {
+        &self.settings
+    }
+
+    pub(crate) fn chats_ref(&self) -> &Chats {
+        &self.chats
     }
 }

@@ -1,3 +1,7 @@
 packages:
   - agent
   - web
+# 依赖的安装脚本一律不跑（pi-ai 的 Google 依赖不需要）。
+allowBuilds:
+  "@google/genai": false
+  protobufjs: false

@@ -18,7 +18,8 @@ async fn main() -> anyhow::Result<()> {
         }
         None => {
             let key = master_key(&config.data_dir)?;
-            serve(config, App::new(pool, key)).await
+            let app = App::new(pool, key, config.agent_cmd.clone());
+            serve(config, app).await
         }
         Some(other) => anyhow::bail!("未知命令：{other}（可用：migrate）"),
     }

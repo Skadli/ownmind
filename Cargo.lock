@@ -1109,6 +1109,7 @@ dependencies = [
  "anyhow",
  "axum",
  "axum-extra",
+ "futures-util",
  "http-body-util",
  "ownmind-auth",
  "ownmind-conversation",

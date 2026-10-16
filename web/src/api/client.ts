@@ -1,16 +1,20 @@
-import type { Conversation } from "./generated/conversation";
+import type { ChatEvent } from "./generated/chat";
+import type { Conversation, Message } from "./generated/conversation";
 import type {
   Credential,
   CredentialInput,
   DefaultModel,
   ProviderKind,
 } from "./generated/settings";
+import { SseParser } from "./sse";
 
 export type {
+  ChatEvent,
   Conversation,
   Credential,
   CredentialInput,
   DefaultModel,
+  Message,
   ProviderKind,
 };
 
@@ -55,6 +59,12 @@ export const api = {
     request<Conversation>("PATCH", `/conversations/${id}`, { title }),
   deleteConversation: (id: string) =>
     request<void>("DELETE", `/conversations/${id}`),
+  listMessages: (id: string) =>
+    request<Message[]>("GET", `/conversations/${id}/messages`),
+  runStatus: (id: string) =>
+    request<{ running: boolean }>("GET", `/conversations/${id}/run`),
+  stopRun: (id: string) => request<void>("DELETE", `/conversations/${id}/run`),
+  sendMessage,
   listCredentials: () => request<Credential[]>("GET", "/settings/credentials"),
   createCredential: (input: CredentialInput) =>
     request<Credential>("POST", "/settings/credentials", input),
@@ -67,3 +77,27 @@ export const api = {
   setDefaultModel: (model: DefaultModel) =>
     request<void>("PUT", "/settings/default-model", model),
 };
+
+/** 发消息并逐个回调 SSE 事件，流结束时返回。 */
+async function sendMessage(
+  id: string,
+  text: string,
+  onEvent: (e: ChatEvent) => void,
+): Promise<void> {
+  const res = await fetch(`/api/conversations/${id}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok || !res.body) {
+    const data = await res.json().catch(() => ({ error: "internal" }));
+    throw new ApiError(res.status, data.error ?? "internal");
+  }
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  const parser = new SseParser();
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    for (const data of parser.push(value)) onEvent(JSON.parse(data));
+  }
+}
