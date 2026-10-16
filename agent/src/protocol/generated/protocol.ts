@@ -9,12 +9,43 @@ export type AgentEvent = { "type": "text_delta", delta: string, } | { "type": "t
  */
 message: unknown, text: string, usage: Usage, } | { "type": "error", message: string, };
 
-export type ContextBuildParams = { conversationId: string, };
+/**
+ * 需要压缩时随上下文一起返回：agent 用当前模型总结后调 context.compact。
+ */
+export type CompactionRequest = { 
+/**
+ * 摘要覆盖到这条消息（含）。
+ */
+uptoSeq: number, 
+/**
+ * 上一次的摘要，新摘要要把它并进去。
+ */
+previousSummary: string | null, 
+/**
+ * 待总结部分的纯文本对话记录。
+ */
+transcript: string, };
+
+export type ContextBuildParams = { conversationId: string, 
+/**
+ * 当前模型的上下文窗口（token），用来判断是否需要压缩。
+ */
+contextWindow: number, };
 
 /**
  * 发给模型的上下文（决策 005 的分层组装结果）。messages 是 pi 消息 JSON。
  */
-export type ContextBuildResult = { systemPrompt: string, messages: unknown[], };
+export type ContextBuildResult = { systemPrompt: string, messages: unknown[], 
+/**
+ * 估算的输入 token 数。
+ */
+estimatedTokens: number, 
+/**
+ * 超过窗口 70% 且可压缩时给出。
+ */
+compaction: CompactionRequest | null, };
+
+export type ContextCompactParams = { conversationId: string, uptoSeq: number, summary: string, };
 
 export type InitializeParams = { protocolVersion: number, };
 

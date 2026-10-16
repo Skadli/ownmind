@@ -6,6 +6,7 @@ use sqlx::sqlite::SqlitePoolOptions;
 const TABLES: &[&str] = &[
     "auth_login_session",
     "auth_owner",
+    "conv_compaction",
     "conv_conversation",
     "conv_message",
     "settings_credential",

@@ -20,10 +20,21 @@ function harness() {
     sent.push(JSON.parse(line));
     server.handleLine(line);
   });
+  const compacted: unknown[] = [];
+  let needsCompaction = false;
   server.on("context.build", () => ({
     systemPrompt: "sys",
     messages: [{ role: "user", content: "你好", timestamp: 0 }],
+    estimatedTokens: 10,
+    compaction:
+      needsCompaction && compacted.length === 0
+        ? { uptoSeq: 4, previousSummary: null, transcript: "[主人]\n早先" }
+        : null,
   }));
+  server.on("context.compact", (p) => {
+    compacted.push(p);
+    return {};
+  });
   const agent = startAgent({
     peer: agentPeer,
     models,
@@ -33,7 +44,16 @@ function harness() {
     sent
       .filter((m) => m.method === "run.event")
       .map((m) => (m.params as { event: { type: string } }).event);
-  return { faux, server, agent, events };
+  return {
+    faux,
+    server,
+    agent,
+    events,
+    compacted,
+    needCompaction: () => {
+      needsCompaction = true;
+    },
+  };
 }
 
 const spec = { kind: "openai", baseUrl: null, apiKey: "k", modelId: "m" };
@@ -76,6 +96,28 @@ describe("agent", () => {
     });
     await agent.idle();
     expect(events().at(-1)?.type).toBe("error");
+  });
+});
+
+describe("compaction", () => {
+  it("summarizes with the model, saves it, then answers", async () => {
+    const h = harness();
+    h.needCompaction();
+    h.faux.setResponses([
+      fauxAssistantMessage("## 目标\n- 测试"),
+      fauxAssistantMessage("好的"),
+    ]);
+    await h.server.request("run.start", {
+      runId: "r3",
+      conversationId: "c1",
+      model: spec,
+    });
+    await h.agent.idle();
+    expect(h.compacted).toEqual([
+      { conversationId: "c1", uptoSeq: 4, summary: "## 目标\n- 测试" },
+    ]);
+    const done = h.events().at(-1) as unknown as { type: string; text: string };
+    expect(done).toMatchObject({ type: "done", text: "好的" });
   });
 });
 

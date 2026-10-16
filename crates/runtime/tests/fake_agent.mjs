@@ -42,7 +42,17 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
     if (crashOnRun) process.exit(3);
     send({ id: msg.id, result: {} });
     const { runId, conversationId, model } = msg.params;
-    const ctx = await call("context.build", { conversationId });
+    const contextWindow = Number(process.env.FAKE_WINDOW ?? 100000);
+    let ctx = await call("context.build", { conversationId, contextWindow });
+    if (ctx.compaction) {
+      const { uptoSeq } = ctx.compaction;
+      await call("context.compact", {
+        conversationId,
+        uptoSeq,
+        summary: `摘要至 ${uptoSeq}`,
+      });
+      ctx = await call("context.build", { conversationId, contextWindow });
+    }
     const ev = (event) =>
       send({ method: "run.event", params: { runId, event } });
     if (model.modelId === "slow") return; // 等 run.cancel

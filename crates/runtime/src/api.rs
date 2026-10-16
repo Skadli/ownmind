@@ -97,6 +97,40 @@ pub struct RunCancelParams {
 #[ts(rename_all = "camelCase")]
 pub struct ContextBuildParams {
     pub conversation_id: String,
+    /// 当前模型的上下文窗口（token），用来判断是否需要压缩。
+    pub context_window: u32,
+}
+
+/// 需要压缩时随上下文一起返回：agent 用当前模型总结后调 context.compact。
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../../../../agent/src/protocol/generated/protocol.ts"
+)]
+#[ts(rename_all = "camelCase")]
+pub struct CompactionRequest {
+    /// 摘要覆盖到这条消息（含）。
+    #[ts(type = "number")]
+    pub upto_seq: i64,
+    /// 上一次的摘要，新摘要要把它并进去。
+    pub previous_summary: Option<String>,
+    /// 待总结部分的纯文本对话记录。
+    pub transcript: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../../../../agent/src/protocol/generated/protocol.ts"
+)]
+#[ts(rename_all = "camelCase")]
+pub struct ContextCompactParams {
+    pub conversation_id: String,
+    #[ts(type = "number")]
+    pub upto_seq: i64,
+    pub summary: String,
 }
 
 /// 发给模型的上下文（决策 005 的分层组装结果）。messages 是 pi 消息 JSON。
@@ -111,6 +145,11 @@ pub struct ContextBuildResult {
     pub system_prompt: String,
     #[ts(type = "unknown[]")]
     pub messages: Vec<serde_json::Value>,
+    /// 估算的输入 token 数。
+    #[ts(type = "number")]
+    pub estimated_tokens: i64,
+    /// 超过窗口 70% 且可压缩时给出。
+    pub compaction: Option<CompactionRequest>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]

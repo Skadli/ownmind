@@ -8,6 +8,7 @@ import type {
 } from "@earendil-works/pi-ai";
 import type {
   AgentEvent,
+  CompactionRequest,
   ContextBuildResult,
   InitializeParams,
   InitializeResult,
@@ -19,6 +20,14 @@ import type { Peer } from "./rpc.js";
 
 export const PROTOCOL_VERSION = 1;
 export const AGENT_VERSION = "0.0.0";
+
+const SUMMARY_PROMPT = `你在为一段长对话写压缩摘要，摘要会代替原文继续发给助手。
+用对话所用的语言，按下面四节输出，每节用要点列出，没有内容写“无”：
+## 目标
+## 已做的决定
+## 产出（文件、链接、关键数据）
+## 未完成事项
+只写对后续对话有用的事实，不要寒暄，不要编造。`;
 
 export type AgentDeps = {
   peer: Peer;
@@ -71,9 +80,32 @@ export function startAgent({ peer, models, resolve }: AgentDeps): {
     const { runId } = params;
     try {
       const model = resolve(params.model);
-      const ctx = await peer.request<ContextBuildResult>("context.build", {
-        conversationId: params.conversationId,
-      });
+      const build = () =>
+        peer.request<ContextBuildResult>("context.build", {
+          conversationId: params.conversationId,
+          contextWindow: model.contextWindow,
+        });
+      let ctx = await build();
+      if (ctx.compaction) {
+        // 压缩失败不影响本次回复：照常用完整上下文继续。
+        const summary = await summarize(
+          model,
+          params,
+          ctx.compaction,
+          signal,
+        ).catch((err) => {
+          process.stderr.write(`压缩失败：${(err as Error).message}\n`);
+          return null;
+        });
+        if (summary) {
+          await peer.request("context.compact", {
+            conversationId: params.conversationId,
+            uptoSeq: ctx.compaction.uptoSeq,
+            summary,
+          });
+          ctx = await build();
+        }
+      }
       const context = {
         systemPrompt: ctx.systemPrompt,
         messages: ctx.messages,
@@ -107,6 +139,38 @@ export function startAgent({ peer, models, resolve }: AgentDeps): {
     } catch (err) {
       emit(runId, { type: "error", message: (err as Error).message });
     }
+  }
+
+  /** 用当前模型把较早的对话总结成结构化摘要（决策 005）。 */
+  async function summarize(
+    model: Model<Api>,
+    params: RunStartParams,
+    req: CompactionRequest,
+    signal: AbortSignal,
+  ): Promise<string> {
+    const previous = req.previousSummary
+      ? `已有摘要（新摘要要包含其中仍然有效的内容）：\n${req.previousSummary}\n\n`
+      : "";
+    const context = {
+      systemPrompt: SUMMARY_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: `${previous}需要总结的对话：\n\n${req.transcript}`,
+          timestamp: Date.now(),
+        },
+      ],
+    } as Context;
+    const stream = models.stream(model, context, {
+      apiKey: params.model.apiKey,
+      signal,
+    });
+    for await (const ev of stream) {
+      if (ev.type === "done") return textOf(ev.message).trim();
+      if (ev.type === "error")
+        throw new Error(ev.error.errorMessage ?? ev.reason);
+    }
+    throw new Error("摘要流意外结束");
   }
 
   return {

@@ -251,3 +251,44 @@ async fn send_rejects_empty_and_unconfigured() {
     ));
     assert!(e.convs.messages(&conv.id).await.unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn long_conversations_are_compacted_keeping_six_turns() {
+    let e = env("m").await;
+    let conv = e.convs.create(None).await.unwrap();
+    for i in 0..8 {
+        let user = NewMessage {
+            role: Role::User,
+            body: serde_json::json!({ "role": "user", "content": format!("问题 {i}"), "timestamp": 0 }),
+            text: format!("问题 {i} {}", "很长的内容".repeat(20)),
+            input_tokens: None,
+            output_tokens: None,
+        };
+        e.convs.append(&conv.id, user).await.unwrap();
+        if i < 7 {
+            let reply = NewMessage {
+                role: Role::Assistant,
+                body: serde_json::json!({ "role": "assistant", "content": [] }),
+                text: "回答".repeat(30),
+                input_tokens: None,
+                output_tokens: None,
+            };
+            e.convs.append(&conv.id, reply).await.unwrap();
+        }
+    }
+    let rt = Runtime::spawn(
+        with_env("FAKE_WINDOW", "200"),
+        e.convs.clone(),
+        e.settings.clone(),
+    );
+    let events = collect(rt.start_run(&conv.id).await.unwrap()).await;
+    // 8 轮里保留最近 6 轮：前 2 轮（seq 1–4）被摘要代替，发给模型 11 条。
+    assert!(
+        matches!(events.last().unwrap(), AgentEvent::Done { text, .. } if text.starts_with("11 条")),
+        "{events:?}"
+    );
+    let c = e.convs.latest_compaction(&conv.id).await.unwrap().unwrap();
+    assert_eq!((c.upto_seq, c.summary.as_str()), (4, "摘要至 4"));
+    // 界面仍能拿到全部 15 条。
+    assert_eq!(e.convs.messages(&conv.id).await.unwrap().len(), 15);
+}

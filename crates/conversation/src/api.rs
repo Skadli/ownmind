@@ -63,6 +63,13 @@ pub struct Message {
     pub created_at: i64,
 }
 
+/// 压缩摘要。
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct Compaction {
+    pub upto_seq: i64,
+    pub summary: String,
+}
+
 /// 追加消息的入参。
 #[derive(Debug, Clone)]
 pub struct NewMessage {
@@ -237,6 +244,42 @@ impl Conversations {
                 .fetch_all(&self.db)
                 .await?;
         Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    /// 最近一次压缩摘要。
+    pub async fn latest_compaction(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Option<Compaction>, ConversationError> {
+        Ok(sqlx::query_as(
+            "SELECT upto_seq, summary FROM conv_compaction WHERE conversation_id = ? \
+             ORDER BY upto_seq DESC LIMIT 1",
+        )
+        .bind(conversation_id)
+        .fetch_optional(&self.db)
+        .await?)
+    }
+
+    /// 保存压缩摘要：upto_seq 及之前的消息此后由它代替。
+    pub async fn add_compaction(
+        &self,
+        conversation_id: &str,
+        upto_seq: i64,
+        summary: &str,
+    ) -> Result<(), ConversationError> {
+        self.get(conversation_id).await?;
+        sqlx::query(
+            "INSERT INTO conv_compaction (id, conversation_id, upto_seq, summary, created_at) \
+             VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(ownmind_kernel::new_id())
+        .bind(conversation_id)
+        .bind(upto_seq)
+        .bind(summary)
+        .bind(ownmind_kernel::now_ms())
+        .execute(&self.db)
+        .await?;
+        Ok(())
     }
 }
 

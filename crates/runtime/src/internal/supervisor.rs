@@ -12,8 +12,9 @@ use tokio::process::{Child, Command};
 use tokio::sync::{Mutex, mpsc, oneshot, watch};
 
 use crate::api::{
-    AgentEvent, ContextBuildParams, InitializeParams, InitializeResult, ModelSpec,
-    PROTOCOL_VERSION, Run, RunCancelParams, RunEventParams, RunStartParams, RuntimeError,
+    AgentEvent, ContextBuildParams, ContextCompactParams, InitializeParams, InitializeResult,
+    ModelSpec, PROTOCOL_VERSION, Run, RunCancelParams, RunEventParams, RunStartParams,
+    RuntimeError,
 };
 
 const READY_TIMEOUT: Duration = Duration::from_secs(15);
@@ -174,9 +175,18 @@ impl Supervisor {
     async fn answer(&self, id: Value, method: &str, params: Value) {
         let result = match method {
             "context.build" => match serde_json::from_value::<ContextBuildParams>(params) {
-                Ok(p) => super::context::build(&self.conversations, &p.conversation_id)
+                Ok(p) => super::context::build(&self.conversations, &p)
                     .await
                     .map(|r| to_value(&r)),
+                Err(e) => Err(format!("参数不合法：{e}")),
+            },
+            "context.compact" => match serde_json::from_value::<ContextCompactParams>(params) {
+                Ok(p) => self
+                    .conversations
+                    .add_compaction(&p.conversation_id, p.upto_seq, &p.summary)
+                    .await
+                    .map(|()| serde_json::json!({}))
+                    .map_err(|e| e.to_string()),
                 Err(e) => Err(format!("参数不合法：{e}")),
             },
             other => Err(format!("未知方法：{other}")),
