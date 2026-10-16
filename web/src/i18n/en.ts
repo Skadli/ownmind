@@ -78,4 +78,20 @@ export const en: Messages = {
   "error.empty_message": "Message can't be empty.",
   "error.agent_unavailable":
     "The agent process is unavailable. Try again shortly.",
+  "totp.title": "Two-step verification",
+  "totp.hint":
+    "When on, signing in also needs the 6-digit code from your authenticator app (Google Authenticator, 1Password, …).",
+  "totp.on": "On",
+  "totp.off": "Off",
+  "totp.enable": "Turn on two-step verification",
+  "totp.scan":
+    "Scan the QR code with your authenticator app, or enter the key manually:",
+  "totp.code": "6-digit code",
+  "totp.confirm": "Verify and turn on",
+  "totp.disable": "Turn off two-step verification",
+  "totp.disablePassword": "Enter your password to turn it off",
+  "error.totp_required": "Enter your two-step verification code.",
+  "error.invalid_totp": "Wrong or already used code.",
+  "error.totp_not_pending": "Please start the two-step setup again.",
+  "nav.cancel": "Cancel",
 };

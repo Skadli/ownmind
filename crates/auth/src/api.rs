@@ -2,9 +2,12 @@
 
 use std::sync::Arc;
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
+use ownmind_kernel::MasterKey;
 use sqlx::SqlitePool;
 
-use crate::internal::{password, token};
+use crate::internal::{password, token, totp};
 
 /// 本模块的数据库迁移，由 server 合并执行。
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
@@ -30,6 +33,14 @@ pub enum AuthError {
     InvalidPassword,
     #[error("未登录或登录已过期")]
     Unauthenticated,
+    #[error("需要两步验证码")]
+    TotpRequired,
+    #[error("验证码错误或已使用")]
+    InvalidTotp,
+    #[error("没有进行中的两步验证设置")]
+    TotpNotPending,
+    #[error(transparent)]
+    Secret(#[from] ownmind_kernel::SecretError),
     #[error(transparent)]
     Db(#[from] sqlx::Error),
 }
@@ -38,16 +49,32 @@ pub enum AuthError {
 #[derive(Clone)]
 pub struct Auth {
     db: SqlitePool,
+    key: MasterKey,
     clock: Clock,
 }
 
+/// 开启两步验证时给主人看的内容：密钥（手动输入用）与 otpauth 链接（生成二维码）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TotpSetup {
+    pub secret: String,
+    pub uri: String,
+}
+
+/// 按 base32 密钥算出某时刻的验证码（测试与排错用）。
+#[doc(hidden)]
+pub fn totp_code_at(secret_base32: &str, now_ms: i64) -> Option<String> {
+    let secret = totp::from_base32(secret_base32)?;
+    Some(totp::code(&secret, now_ms.div_euclid(totp::STEP_MS)))
+}
+
 impl Auth {
-    pub fn new(db: SqlitePool) -> Self {
-        Self::with_clock(db, Arc::new(ownmind_kernel::now_ms))
+    pub fn new(db: SqlitePool, key: MasterKey) -> Self {
+        Self::with_clock(db, key, Arc::new(ownmind_kernel::now_ms))
     }
 
-    pub fn with_clock(db: SqlitePool, clock: Clock) -> Self {
-        Self { db, clock }
+    pub fn with_clock(db: SqlitePool, key: MasterKey, clock: Clock) -> Self {
+        Self { db, key, clock }
     }
 
     pub async fn is_set_up(&self) -> Result<bool, AuthError> {
@@ -84,11 +111,78 @@ impl Auth {
         self.open_session(user_agent).await
     }
 
+    /// 密码登录；开启了两步验证时还要验证码（缺少时返回 TotpRequired）。
     pub async fn log_in(
         &self,
         password: &str,
+        code: Option<&str>,
         user_agent: Option<&str>,
     ) -> Result<String, AuthError> {
+        self.check_password(password).await?;
+        if let Some(secret) = self.enabled_secret().await? {
+            let code = code.filter(|c| !c.trim().is_empty());
+            let code = code.ok_or(AuthError::TotpRequired)?;
+            self.consume_code(&secret, code).await?;
+        }
+        self.open_session(user_agent).await
+    }
+
+    /// 两步验证是否已开启。
+    pub async fn totp_enabled(&self) -> Result<bool, AuthError> {
+        Ok(self.enabled_secret().await?.is_some())
+    }
+
+    /// 开始开启两步验证：生成新密钥（未确认前不生效）。
+    pub async fn totp_begin(&self) -> Result<TotpSetup, AuthError> {
+        let secret = totp::generate_secret();
+        let updated = sqlx::query("UPDATE auth_owner SET totp_pending = ?")
+            .bind(STANDARD.encode(self.key.encrypt(&secret)))
+            .execute(&self.db)
+            .await?;
+        if updated.rows_affected() == 0 {
+            return Err(AuthError::NotSetUp);
+        }
+        let b32 = totp::base32(&secret);
+        Ok(TotpSetup {
+            uri: format!("otpauth://totp/Ownmind:owner?secret={b32}&issuer=Ownmind"),
+            secret: b32,
+        })
+    }
+
+    /// 用一次正确的验证码确认，两步验证生效。
+    pub async fn totp_confirm(&self, code: &str) -> Result<(), AuthError> {
+        let pending: Option<String> = sqlx::query_scalar("SELECT totp_pending FROM auth_owner")
+            .fetch_optional(&self.db)
+            .await?
+            .flatten();
+        let secret = self.open(&pending.ok_or(AuthError::TotpNotPending)?)?;
+        let step = totp::verify(&secret, code, (self.clock)()).ok_or(AuthError::InvalidTotp)?;
+        sqlx::query(
+            "UPDATE auth_owner SET totp_secret = totp_pending, totp_pending = NULL, \
+             totp_enabled_at = ?, totp_last_step = ?, updated_at = ?",
+        )
+        .bind((self.clock)())
+        .bind(step)
+        .bind((self.clock)())
+        .execute(&self.db)
+        .await?;
+        Ok(())
+    }
+
+    /// 关闭两步验证，需要密码。
+    pub async fn totp_disable(&self, password: &str) -> Result<(), AuthError> {
+        self.check_password(password).await?;
+        sqlx::query(
+            "UPDATE auth_owner SET totp_secret = NULL, totp_pending = NULL, \
+             totp_enabled_at = NULL, totp_last_step = NULL, updated_at = ?",
+        )
+        .bind((self.clock)())
+        .execute(&self.db)
+        .await?;
+        Ok(())
+    }
+
+    async fn check_password(&self, password: &str) -> Result<(), AuthError> {
         let hash: Option<String> = sqlx::query_scalar("SELECT password_hash FROM auth_owner")
             .fetch_optional(&self.db)
             .await?;
@@ -96,7 +190,41 @@ impl Auth {
         if !password::verify(password, &hash) {
             return Err(AuthError::InvalidPassword);
         }
-        self.open_session(user_agent).await
+        Ok(())
+    }
+
+    async fn enabled_secret(&self) -> Result<Option<Vec<u8>>, AuthError> {
+        let sealed: Option<String> = sqlx::query_scalar(
+            "SELECT totp_secret FROM auth_owner WHERE totp_enabled_at IS NOT NULL",
+        )
+        .fetch_optional(&self.db)
+        .await?
+        .flatten();
+        sealed.map(|s| self.open(&s)).transpose()
+    }
+
+    fn open(&self, sealed: &str) -> Result<Vec<u8>, AuthError> {
+        let bytes = STANDARD
+            .decode(sealed)
+            .map_err(|_| AuthError::Secret(ownmind_kernel::SecretError::Decrypt))?;
+        Ok(self.key.decrypt(&bytes)?)
+    }
+
+    /// 校验验证码，并记下步数：同一步（及更早的）验证码不能再用。
+    async fn consume_code(&self, secret: &[u8], code: &str) -> Result<(), AuthError> {
+        let step = totp::verify(secret, code, (self.clock)()).ok_or(AuthError::InvalidTotp)?;
+        let updated = sqlx::query(
+            "UPDATE auth_owner SET totp_last_step = ? \
+             WHERE totp_last_step IS NULL OR totp_last_step < ?",
+        )
+        .bind(step)
+        .bind(step)
+        .execute(&self.db)
+        .await?;
+        if updated.rows_affected() == 0 {
+            return Err(AuthError::InvalidTotp);
+        }
+        Ok(())
     }
 
     /// 校验令牌；有效则续期。

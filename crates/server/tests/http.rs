@@ -363,3 +363,50 @@ async fn chat_streams_over_sse_and_persists() {
     assert_eq!(msgs[1]["role"], "assistant");
     assert_eq!(msgs[1]["outputTokens"], 5);
 }
+
+#[tokio::test]
+async fn totp_over_http_requires_code_after_enabling() {
+    let mut s = TestServer::start().await;
+    s.call(
+        Method::POST,
+        "/api/auth/setup",
+        Some(json!({ "password": "correct horse battery" })),
+    )
+    .await;
+    let (_, st) = s.json(Method::GET, "/api/auth/totp", None).await;
+    assert_eq!(st, json!({ "enabled": false }));
+    let (code, setup) = s.json(Method::POST, "/api/auth/totp/setup", None).await;
+    assert_eq!(code, StatusCode::OK);
+    assert!(
+        setup["uri"]
+            .as_str()
+            .unwrap()
+            .starts_with("otpauth://totp/")
+    );
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    let otp = ownmind_auth::api::totp_code_at(setup["secret"].as_str().unwrap(), now).unwrap();
+    let (code, _) = s
+        .call(
+            Method::POST,
+            "/api/auth/totp/confirm",
+            Some(json!({ "code": otp })),
+        )
+        .await;
+    assert_eq!(code, StatusCode::NO_CONTENT);
+
+    s.call(Method::POST, "/api/auth/logout", None).await;
+    let pw = json!({ "password": "correct horse battery" });
+    let (_, body) = s.json(Method::POST, "/api/auth/login", Some(pw)).await;
+    assert_eq!(body, json!({ "error": "totp_required" }));
+    let (_, body) = s
+        .json(
+            Method::POST,
+            "/api/auth/login",
+            Some(json!({ "password": "correct horse battery", "code": otp })),
+        )
+        .await;
+    assert_eq!(body, json!({ "error": "invalid_totp" }));
+}

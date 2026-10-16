@@ -50,8 +50,15 @@ export const api = {
     request<{ isSetUp: boolean; isLoggedIn: boolean }>("GET", "/auth/status"),
   setUp: (password: string) =>
     request<void>("POST", "/auth/setup", { password }),
-  logIn: (password: string) =>
-    request<void>("POST", "/auth/login", { password }),
+  logIn: (password: string, code?: string) =>
+    request<void>("POST", "/auth/login", { password, code }),
+  totpStatus: () => request<{ enabled: boolean }>("GET", "/auth/totp"),
+  totpSetup: () =>
+    request<{ secret: string; uri: string }>("POST", "/auth/totp/setup"),
+  totpConfirm: (code: string) =>
+    request<void>("POST", "/auth/totp/confirm", { code }),
+  totpDisable: (password: string) =>
+    request<void>("POST", "/auth/totp/disable", { password }),
   logOut: () => request<void>("POST", "/auth/logout"),
   listConversations: () => request<Conversation[]>("GET", "/conversations"),
   createConversation: () => request<Conversation>("POST", "/conversations", {}),

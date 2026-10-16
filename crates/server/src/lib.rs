@@ -56,10 +56,10 @@ impl App {
     /// 组装各模块并拉起 agent 子进程。需要在 tokio 运行时里调用。
     pub fn new(db: SqlitePool, key: MasterKey, agent_cmd: Vec<String>) -> Self {
         let conversations = Conversations::new(db.clone());
-        let settings = Settings::new(db.clone(), key);
+        let settings = Settings::new(db.clone(), key.clone());
         let runtime = Runtime::spawn(agent_cmd, conversations.clone(), settings.clone());
         Self {
-            auth: Auth::new(db),
+            auth: Auth::new(db, key),
             conversations,
             settings,
             runtime,

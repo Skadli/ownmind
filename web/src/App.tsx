@@ -5,6 +5,7 @@ import { AccountPage } from "./pages/AccountPage";
 import { ChatPage } from "./pages/ChatPage";
 import { ConversationsPage } from "./pages/ConversationsPage";
 import { PasswordPage } from "./pages/PasswordPage";
+import { SecuritySection } from "./pages/SecuritySection";
 
 type Screen =
   | "loading"
@@ -52,8 +53,8 @@ export function App() {
       return (
         <PasswordPage
           mode="login"
-          onSubmit={async (pw) => {
-            await api.logIn(pw);
+          onSubmit={async (pw, code) => {
+            await api.logIn(pw, code);
             setScreen("home");
           }}
         />
@@ -77,6 +78,7 @@ export function App() {
             ← {t("nav.back")}
           </button>
           <AccountPage onUnauthenticated={() => setScreen("login")} />
+          <SecuritySection onUnauthenticated={() => setScreen("login")} />
         </main>
       );
   }

@@ -30,6 +30,10 @@ pub fn router(app: App, web_dir: &Path) -> Router {
         .route("/auth/setup", post(set_up))
         .route("/auth/login", post(log_in))
         .route("/auth/logout", post(log_out))
+        .route("/auth/totp", get(totp_status))
+        .route("/auth/totp/setup", post(totp_setup))
+        .route("/auth/totp/confirm", post(totp_confirm))
+        .route("/auth/totp/disable", post(totp_disable))
         .route(
             "/conversations",
             get(list_conversations).post(create_conversation),
@@ -85,6 +89,10 @@ impl From<AuthError> for ApiError {
             AuthError::WeakPassword => Self(StatusCode::UNPROCESSABLE_ENTITY, "weak_password"),
             AuthError::InvalidPassword => Self(StatusCode::UNAUTHORIZED, "invalid_password"),
             AuthError::Unauthenticated => Self(StatusCode::UNAUTHORIZED, "unauthenticated"),
+            AuthError::TotpRequired => Self(StatusCode::UNAUTHORIZED, "totp_required"),
+            AuthError::InvalidTotp => Self(StatusCode::UNAUTHORIZED, "invalid_totp"),
+            AuthError::TotpNotPending => Self(StatusCode::CONFLICT, "totp_not_pending"),
+            AuthError::Secret(e) => internal(e),
             AuthError::Db(e) => internal(e),
         }
     }
@@ -183,6 +191,17 @@ struct PasswordBody {
     password: String,
 }
 
+#[derive(Deserialize)]
+struct LoginBody {
+    password: String,
+    code: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CodeBody {
+    code: String,
+}
+
 async fn auth_status(State(app): State<App>, jar: CookieJar) -> Result<Json<Value>, ApiError> {
     let is_set_up = app.auth.is_set_up().await?;
     let is_logged_in = match jar.get(SESSION_COOKIE) {
@@ -211,11 +230,11 @@ async fn log_in(
     State(app): State<App>,
     headers: HeaderMap,
     jar: CookieJar,
-    Json(body): Json<PasswordBody>,
+    Json(body): Json<LoginBody>,
 ) -> Result<(CookieJar, StatusCode), ApiError> {
     let token = app
         .auth
-        .log_in(&body.password, user_agent(&headers))
+        .log_in(&body.password, body.code.as_deref(), user_agent(&headers))
         .await?;
     Ok((jar.add(session_cookie(token)), StatusCode::NO_CONTENT))
 }
@@ -231,6 +250,37 @@ async fn log_out(
         jar.remove(Cookie::build(SESSION_COOKIE).path("/")),
         StatusCode::NO_CONTENT,
     ))
+}
+
+// ---------- 两步验证 ----------
+
+async fn totp_status(_: Owner, State(app): State<App>) -> Result<Json<Value>, ApiError> {
+    Ok(Json(json!({ "enabled": app.auth.totp_enabled().await? })))
+}
+
+async fn totp_setup(
+    _: Owner,
+    State(app): State<App>,
+) -> Result<Json<ownmind_auth::api::TotpSetup>, ApiError> {
+    Ok(Json(app.auth.totp_begin().await?))
+}
+
+async fn totp_confirm(
+    _: Owner,
+    State(app): State<App>,
+    Json(body): Json<CodeBody>,
+) -> Result<StatusCode, ApiError> {
+    app.auth.totp_confirm(&body.code).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn totp_disable(
+    _: Owner,
+    State(app): State<App>,
+    Json(body): Json<PasswordBody>,
+) -> Result<StatusCode, ApiError> {
+    app.auth.totp_disable(&body.password).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ---------- 会话 ----------
