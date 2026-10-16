@@ -163,3 +163,58 @@ async fn totp_gates_login_once_confirmed_and_codes_are_single_use() {
     auth.totp_disable(PASSWORD).await.unwrap();
     auth.log_in(PASSWORD, None, None).await.unwrap();
 }
+
+#[tokio::test]
+async fn repeated_failures_lock_with_growing_backoff_and_survive_restart() {
+    let (_d, pool) = pool().await;
+    let now = Arc::new(AtomicI64::new(1_800_000_000_000));
+    let make = |pool: SqlitePool| {
+        let clock = now.clone();
+        Auth::with_clock(
+            pool,
+            MasterKey::random(),
+            Arc::new(move || clock.load(Ordering::SeqCst)),
+        )
+    };
+    let auth = make(pool.clone());
+    auth.set_up(PASSWORD, None).await.unwrap();
+    for _ in 0..4 {
+        assert!(matches!(
+            auth.log_in("nope nope", None, None).await,
+            Err(AuthError::InvalidPassword)
+        ));
+    }
+    // 第 5 次失败后锁 1 分钟，期间连正确密码也不行。
+    auth.log_in("nope nope", None, None).await.unwrap_err();
+    assert!(matches!(
+        auth.log_in(PASSWORD, None, None).await,
+        Err(AuthError::Locked {
+            retry_after_secs: 60
+        })
+    ));
+    // 换一个实例（模拟重启）仍然锁着。
+    let auth = make(pool);
+    now.fetch_add(30_000, Ordering::SeqCst);
+    assert!(matches!(
+        auth.log_in(PASSWORD, None, None).await,
+        Err(AuthError::Locked {
+            retry_after_secs: 30
+        })
+    ));
+    // 解锁后再错一次：锁 2 分钟。
+    now.fetch_add(30_000, Ordering::SeqCst);
+    auth.log_in("nope nope", None, None).await.unwrap_err();
+    assert!(matches!(
+        auth.log_in(PASSWORD, None, None).await,
+        Err(AuthError::Locked {
+            retry_after_secs: 120
+        })
+    ));
+    // 成功登录清零：之后再错 4 次也不锁。
+    now.fetch_add(120_000, Ordering::SeqCst);
+    auth.log_in(PASSWORD, None, None).await.unwrap();
+    for _ in 0..4 {
+        auth.log_in("nope nope", None, None).await.unwrap_err();
+    }
+    auth.log_in(PASSWORD, None, None).await.unwrap();
+}

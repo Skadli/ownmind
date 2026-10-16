@@ -18,6 +18,11 @@ pub const SESSION_TTL_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 /// 主人密码最短长度（字符）。
 pub const MIN_PASSWORD_CHARS: usize = 8;
 
+/// 连续失败这么多次后开始锁定。
+pub const MAX_FAILED_LOGINS: i64 = 5;
+/// 锁定时长上限。
+pub const MAX_LOCK_MS: i64 = 60 * 60 * 1000;
+
 /// 返回当前 UTC 毫秒的时钟；测试时可替换。
 pub type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
 
@@ -33,6 +38,8 @@ pub enum AuthError {
     InvalidPassword,
     #[error("未登录或登录已过期")]
     Unauthenticated,
+    #[error("尝试次数过多，{retry_after_secs} 秒后再试")]
+    Locked { retry_after_secs: i64 },
     #[error("需要两步验证码")]
     TotpRequired,
     #[error("验证码错误或已使用")]
@@ -118,13 +125,63 @@ impl Auth {
         code: Option<&str>,
         user_agent: Option<&str>,
     ) -> Result<String, AuthError> {
-        self.check_password(password).await?;
-        if let Some(secret) = self.enabled_secret().await? {
-            let code = code.filter(|c| !c.trim().is_empty());
-            let code = code.ok_or(AuthError::TotpRequired)?;
-            self.consume_code(&secret, code).await?;
+        self.ensure_not_locked().await?;
+        let checked = async {
+            self.check_password(password).await?;
+            if let Some(secret) = self.enabled_secret().await? {
+                let code = code.filter(|c| !c.trim().is_empty());
+                let code = code.ok_or(AuthError::TotpRequired)?;
+                self.consume_code(&secret, code).await?;
+            }
+            Ok(())
         }
-        self.open_session(user_agent).await
+        .await;
+        match checked {
+            Ok(()) => {
+                sqlx::query("UPDATE auth_owner SET failed_logins = 0, locked_until = NULL")
+                    .execute(&self.db)
+                    .await?;
+                self.open_session(user_agent).await
+            }
+            Err(e @ (AuthError::InvalidPassword | AuthError::InvalidTotp)) => {
+                self.record_failure().await?;
+                Err(e)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// 锁定中则返回剩余秒数。
+    async fn ensure_not_locked(&self) -> Result<(), AuthError> {
+        let until: Option<i64> = sqlx::query_scalar("SELECT locked_until FROM auth_owner")
+            .fetch_optional(&self.db)
+            .await?
+            .flatten();
+        let now = (self.clock)();
+        match until {
+            Some(u) if u > now => Err(AuthError::Locked {
+                retry_after_secs: (u - now + 999) / 1000,
+            }),
+            _ => Ok(()),
+        }
+    }
+
+    /// 记一次失败；第 5 次起锁定 1、2、4…分钟，上限 1 小时。
+    async fn record_failure(&self) -> Result<(), AuthError> {
+        let failed: i64 = sqlx::query_scalar(
+            "UPDATE auth_owner SET failed_logins = failed_logins + 1 RETURNING failed_logins",
+        )
+        .fetch_one(&self.db)
+        .await?;
+        if failed >= MAX_FAILED_LOGINS {
+            let exp = (failed - MAX_FAILED_LOGINS).min(10) as u32;
+            let lock = (60_000i64 << exp).min(MAX_LOCK_MS);
+            sqlx::query("UPDATE auth_owner SET locked_until = ?")
+                .bind((self.clock)() + lock)
+                .execute(&self.db)
+                .await?;
+        }
+        Ok(())
     }
 
     /// 两步验证是否已开启。
@@ -171,7 +228,13 @@ impl Auth {
 
     /// 关闭两步验证，需要密码。
     pub async fn totp_disable(&self, password: &str) -> Result<(), AuthError> {
-        self.check_password(password).await?;
+        self.ensure_not_locked().await?;
+        if let Err(e) = self.check_password(password).await {
+            if matches!(e, AuthError::InvalidPassword) {
+                self.record_failure().await?;
+            }
+            return Err(e);
+        }
         sqlx::query(
             "UPDATE auth_owner SET totp_secret = NULL, totp_pending = NULL, \
              totp_enabled_at = NULL, totp_last_step = NULL, updated_at = ?",

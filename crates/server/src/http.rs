@@ -89,6 +89,7 @@ impl From<AuthError> for ApiError {
             AuthError::WeakPassword => Self(StatusCode::UNPROCESSABLE_ENTITY, "weak_password"),
             AuthError::InvalidPassword => Self(StatusCode::UNAUTHORIZED, "invalid_password"),
             AuthError::Unauthenticated => Self(StatusCode::UNAUTHORIZED, "unauthenticated"),
+            AuthError::Locked { .. } => Self(StatusCode::TOO_MANY_REQUESTS, "locked"),
             AuthError::TotpRequired => Self(StatusCode::UNAUTHORIZED, "totp_required"),
             AuthError::InvalidTotp => Self(StatusCode::UNAUTHORIZED, "invalid_totp"),
             AuthError::TotpNotPending => Self(StatusCode::CONFLICT, "totp_not_pending"),
@@ -140,6 +141,23 @@ impl From<RuntimeError> for ApiError {
             }
             RuntimeError::Agent(m) => internal(m),
         }
+    }
+}
+
+/// 登录类接口的错误：锁定时带上剩余秒数（响应体 retryAfter 与 Retry-After 头）。
+struct AuthFailure(AuthError);
+
+impl IntoResponse for AuthFailure {
+    fn into_response(self) -> Response {
+        if let AuthError::Locked { retry_after_secs } = self.0 {
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                [(header::RETRY_AFTER, retry_after_secs.to_string())],
+                Json(json!({ "error": "locked", "retryAfter": retry_after_secs })),
+            )
+                .into_response();
+        }
+        ApiError::from(self.0).into_response()
     }
 }
 
@@ -231,11 +249,12 @@ async fn log_in(
     headers: HeaderMap,
     jar: CookieJar,
     Json(body): Json<LoginBody>,
-) -> Result<(CookieJar, StatusCode), ApiError> {
+) -> Result<(CookieJar, StatusCode), AuthFailure> {
     let token = app
         .auth
         .log_in(&body.password, body.code.as_deref(), user_agent(&headers))
-        .await?;
+        .await
+        .map_err(AuthFailure)?;
     Ok((jar.add(session_cookie(token)), StatusCode::NO_CONTENT))
 }
 
@@ -278,8 +297,11 @@ async fn totp_disable(
     _: Owner,
     State(app): State<App>,
     Json(body): Json<PasswordBody>,
-) -> Result<StatusCode, ApiError> {
-    app.auth.totp_disable(&body.password).await?;
+) -> Result<StatusCode, AuthFailure> {
+    app.auth
+        .totp_disable(&body.password)
+        .await
+        .map_err(AuthFailure)?;
     Ok(StatusCode::NO_CONTENT)
 }
 

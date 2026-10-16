@@ -23,6 +23,8 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
+    /** 登录被锁定时的剩余秒数。 */
+    readonly retryAfter?: number,
   ) {
     super(code);
   }
@@ -40,7 +42,7 @@ async function request<T>(
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: "internal" }));
-    throw new ApiError(res.status, data.error ?? "internal");
+    throw new ApiError(res.status, data.error ?? "internal", data.retryAfter);
   }
   return res.status === 204 ? (undefined as T) : res.json();
 }

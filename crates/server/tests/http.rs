@@ -410,3 +410,33 @@ async fn totp_over_http_requires_code_after_enabling() {
         .await;
     assert_eq!(body, json!({ "error": "invalid_totp" }));
 }
+
+#[tokio::test]
+async fn login_is_throttled_with_429_and_retry_after() {
+    let mut s = TestServer::start().await;
+    s.call(
+        Method::POST,
+        "/api/auth/setup",
+        Some(json!({ "password": "correct horse battery" })),
+    )
+    .await;
+    s.call(Method::POST, "/api/auth/logout", None).await;
+    for _ in 0..5 {
+        s.call(
+            Method::POST,
+            "/api/auth/login",
+            Some(json!({ "password": "wrong password" })),
+        )
+        .await;
+    }
+    let (code, body) = s
+        .json(
+            Method::POST,
+            "/api/auth/login",
+            Some(json!({ "password": "correct horse battery" })),
+        )
+        .await;
+    assert_eq!(code, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(body["error"], "locked");
+    assert!(body["retryAfter"].as_i64().unwrap() > 0);
+}

@@ -85,4 +85,6 @@ export const zh = {
   "error.invalid_totp": "验证码错误或已使用过。",
   "error.totp_not_pending": "请重新开始设置两步验证。",
   "nav.cancel": "取消",
+  "error.locked": "尝试次数过多，请稍后再试",
+  "unit.minutes": "分钟",
 };

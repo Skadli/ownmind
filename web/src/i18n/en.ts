@@ -94,4 +94,6 @@ export const en: Messages = {
   "error.invalid_totp": "Wrong or already used code.",
   "error.totp_not_pending": "Please start the two-step setup again.",
   "nav.cancel": "Cancel",
+  "error.locked": "Too many attempts. Try again later",
+  "unit.minutes": "min",
 };

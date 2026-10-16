@@ -28,7 +28,12 @@ export function PasswordPage({ mode, onSubmit }: Props) {
         setNeedsCode(true);
         return;
       }
-      setError(errorText(c));
+      const wait = err instanceof ApiError ? err.retryAfter : undefined;
+      setError(
+        wait
+          ? `${errorText(c)} (${Math.ceil(wait / 60)} ${t("unit.minutes")})`
+          : errorText(c),
+      );
     } finally {
       setBusy(false);
     }
