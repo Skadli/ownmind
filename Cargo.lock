@@ -1071,6 +1071,14 @@ dependencies = [
  "ownmind-schedule",
  "ownmind-settings",
  "ownmind-skill",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "ts-rs",
 ]
 
 [[package]]

@@ -13,6 +13,16 @@ ownmind-conversation = { path = "../conversation" }
 ownmind-memory = { path = "../memory" }
 ownmind-schedule = { path = "../schedule" }
 ownmind-skill = { path = "../skill" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["process", "io-util", "sync", "time"] }
+tracing.workspace = true
+ts-rs.workspace = true
+
+[dev-dependencies]
+sqlx.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true
