@@ -42,8 +42,9 @@ jobs:
       - name: 类型检查
         run: pnpm -r typecheck
 
-      - name: 测试（含空库迁移）
+      - name: 测试（含空库迁移、真实 agent 的 100 轮聊天）
         run: |
+          pnpm -C agent build
           cargo test --workspace
           pnpm -r test
 
@@ -85,12 +86,18 @@ jobs:
         run: |
           cp .env.example .env
           sed -i 's/^OWNMIND_DOMAIN=.*/OWNMIND_DOMAIN=localhost/; s#^OWNMIND_IMAGE=.*#OWNMIND_IMAGE=ownmind:ci#' .env
+          echo OWNMIND_TEST_FAUX=1 >> .env
           docker compose up -d --wait --wait-timeout 120
           test "$(docker compose ps -a migrate --format '{{.ExitCode}}')" = 0
           curl -fsSk https://localhost/healthz | grep -q '"ok"'
           curl -fsSk https://localhost/ | grep -qi '<html'
           curl -fsSk -c jar -H 'content-type: application/json' -d '{"password":"ci-password-123"}' https://localhost/api/auth/setup
-          curl -fsSk -b jar -H 'content-type: application/json' -d '{"title":"ci"}' https://localhost/api/conversations
+          conv=$(curl -fsSk -b jar -H 'content-type: application/json' -d '{"title":"ci"}' https://localhost/api/conversations | jq -r .id)
+          # 一轮聊天：faux 模型（OWNMIND_TEST_FAUX=1），验证镜像里的 agent 能跑通
+          cred=$(curl -fsSk -b jar -H 'content-type: application/json' -d '{"kind":"openai","label":"ci","apiKey":"unused"}' https://localhost/api/settings/credentials | jq -r .id)
+          curl -fsSk -b jar -X PUT -H 'content-type: application/json' -d "{\"credentialId\":\"$cred\",\"modelId\":\"faux\"}" https://localhost/api/settings/default-model
+          curl -fsSkN -b jar -H 'content-type: application/json' -d '{"text":"hello"}' https://localhost/api/conversations/$conv/messages | tee chat.txt
+          grep -q 'event: done' chat.txt && grep -q 'faux: hello' chat.txt
           # 重启后数据还在、迁移幂等
           docker compose down
           docker compose up -d --wait --wait-timeout 120

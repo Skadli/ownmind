@@ -75,7 +75,10 @@ fn core_layer(p: &Profile, timezone: &str) -> String {
 
 /// token 估算：最后一条带 usage 的回复，其 input+output 就是到它为止的上下文；之后的按字符估。
 fn estimate(msgs: &[&Message]) -> i64 {
-    let last_usage = msgs.iter().rposition(|m| m.input_tokens.is_some());
+    // 有的兼容接口不返回 usage（记为 0），这种情况按字符估算。
+    let last_usage = msgs
+        .iter()
+        .rposition(|m| m.input_tokens.is_some_and(|t| t > 0));
     match last_usage {
         Some(i) => {
             let m = msgs[i];

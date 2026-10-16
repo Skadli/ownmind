@@ -126,7 +126,11 @@ export function startAgent({ peer, models, resolve }: AgentDeps): {
             message: ev.message,
             text: textOf(ev.message),
             usage: {
-              input: ev.message.usage.input,
+              // 供应商的 input 不含缓存命中部分；上下文大小要算全部提示 token。
+              input:
+                ev.message.usage.input +
+                ev.message.usage.cacheRead +
+                ev.message.usage.cacheWrite,
               output: ev.message.usage.output,
             },
           });
