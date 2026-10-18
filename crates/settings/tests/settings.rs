@@ -159,3 +159,64 @@ async fn profile_and_system_prefs_round_trip_with_validation() {
         Err(SettingsError::InvalidTimezone)
     ));
 }
+
+#[tokio::test]
+async fn search_config_encrypts_key_and_keeps_it_on_blank_update() {
+    use ownmind_settings::api::{SearchInput, SearchProvider};
+    let (_d, pool, s) = settings().await;
+    assert!(s.search_config().await.unwrap().is_none());
+    let bad = SearchInput {
+        provider: SearchProvider::Brave,
+        base_url: None,
+        api_key: None,
+    };
+    assert!(matches!(
+        s.set_search_config(bad).await,
+        Err(SettingsError::InvalidSearch)
+    ));
+    let cfg = s
+        .set_search_config(SearchInput {
+            provider: SearchProvider::Brave,
+            base_url: None,
+            api_key: Some("brave-secret-9876".into()),
+        })
+        .await
+        .unwrap();
+    assert_eq!(cfg.key_hint.as_deref(), Some("…9876"));
+    let raw: String =
+        sqlx::query_scalar("SELECT value FROM settings_preference WHERE key = 'search'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(!raw.contains("brave-secret"));
+    s.set_search_config(SearchInput {
+        provider: SearchProvider::Brave,
+        base_url: None,
+        api_key: Some("  ".into()),
+    })
+    .await
+    .unwrap();
+    let r = s.resolve_search().await.unwrap().unwrap();
+    assert_eq!(r.api_key.as_deref(), Some("brave-secret-9876"));
+    // 换供应商必须重新给 Key；SearXNG 只要地址
+    assert!(
+        s.set_search_config(SearchInput {
+            provider: SearchProvider::Tavily,
+            base_url: None,
+            api_key: None,
+        })
+        .await
+        .is_err()
+    );
+    let sx = s
+        .set_search_config(SearchInput {
+            provider: SearchProvider::Searxng,
+            base_url: Some("http://searx:8080/".into()),
+            api_key: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(sx.base_url.as_deref(), Some("http://searx:8080"));
+    s.clear_search_config().await.unwrap();
+    assert!(s.resolve_search().await.unwrap().is_none());
+}

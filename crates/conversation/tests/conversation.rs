@@ -19,6 +19,7 @@ async fn create_list_rename_delete() {
 
     let first = convs.create(None).await.unwrap();
     assert_eq!(first.title, "新会话");
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     let second = convs.create(Some("周报")).await.unwrap();
 
     let titles: Vec<_> = convs
@@ -30,6 +31,7 @@ async fn create_list_rename_delete() {
         .collect();
     assert_eq!(titles, ["周报", "新会话"], "最近更新的排前面");
 
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     let renamed = convs.rename(&first.id, "旅行计划").await.unwrap();
     assert_eq!(renamed.title, "旅行计划");
     assert_eq!(convs.list().await.unwrap()[0].id, first.id, "改名算更新");

@@ -13,6 +13,7 @@ ownmind-conversation = { path = "../conversation" }
 ownmind-memory = { path = "../memory" }
 ownmind-schedule = { path = "../schedule" }
 ownmind-skill = { path = "../skill" }
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
