@@ -13,6 +13,8 @@ const SYSTEM_PROMPT: &str = "你是 Ownmind，主人部署在自己服务器上�
 const COMPACT_RATIO: f64 = 0.7;
 /// 压缩时保留最近这么多轮原文（一轮从一条主人消息开始）。
 const KEEP_TURNS: usize = 6;
+/// 工具结果只在最近这么多轮里保留原文。
+const KEEP_TOOL_TURNS: usize = 10;
 
 pub(crate) async fn build(
     conversations: &Conversations,
@@ -48,6 +50,7 @@ pub(crate) async fn build(
         .flatten();
 
     let mut messages: Vec<Value> = live.iter().map(|m| m.body.clone()).collect();
+    slim_old_tool_results(&live, &mut messages);
     append_time(&mut messages, ownmind_kernel::now_ms(), &system.timezone);
     Ok(ContextBuildResult {
         system_prompt,
@@ -95,7 +98,7 @@ fn estimate(msgs: &[&Message]) -> i64 {
 }
 
 /// 按字符估算：ASCII 约 4 个字符一个 token，其他（中文等）约 1 个字符一个 token。
-fn estimate_chars(text: &str) -> i64 {
+pub(crate) fn estimate_chars(text: &str) -> i64 {
     let (ascii, other) = text.chars().fold((0i64, 0i64), |(a, o), c| {
         if c.is_ascii() { (a + 1, o) } else { (a, o + 1) }
     });
@@ -157,6 +160,44 @@ fn append_time(messages: &mut [Value], now_ms: i64, timezone: &str) {
     }
 }
 
+/// 超过最近 KEEP_TOOL_TURNS 轮的工具结果换成一行占位（决策 005.4），原文仍在库里。
+fn slim_old_tool_results(live: &[&Message], messages: &mut [Value]) {
+    let user_idx: Vec<usize> = live
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| m.role == Role::User)
+        .map(|(i, _)| i)
+        .collect();
+    if user_idx.len() <= KEEP_TOOL_TURNS {
+        return;
+    }
+    let cutoff = user_idx[user_idx.len() - KEEP_TOOL_TURNS];
+    for (m, body) in live.iter().zip(messages.iter_mut()).take(cutoff) {
+        if m.role != Role::Tool {
+            continue;
+        }
+        let name = body
+            .get("toolName")
+            .and_then(Value::as_str)
+            .unwrap_or("工具");
+        let path = m
+            .text
+            .find(".outputs/")
+            .map(|i| {
+                let rest = &m.text[i..];
+                let end = rest
+                    .find(|c: char| c.is_whitespace() || "，。）)\"'".contains(c))
+                    .unwrap_or(rest.len());
+                format!("；全文在沙盒 /workspace/{}", &rest[..end])
+            })
+            .unwrap_or_default();
+        body["content"] = json!([{
+            "type": "text",
+            "text": format!("[较早的 {name} 结果已省略{path}]")
+        }]);
+    }
+}
+
 /// UTC 毫秒 → "2026-10-16 07:00 UTC"（分钟精度，避免每秒都变）。
 fn format_utc(ms: i64) -> String {
     let secs = ms.div_euclid(1000);
@@ -206,6 +247,61 @@ mod tests {
             core_layer(&p, "Asia/Shanghai"),
             "\n\n## 主人资料\n- 称呼：老板\n- 时区：Asia/Shanghai"
         );
+    }
+
+    fn msg(seq: i64, role: Role, text: &str, body: Value) -> Message {
+        Message {
+            id: seq.to_string(),
+            conversation_id: "c".into(),
+            seq,
+            role,
+            body,
+            text: text.into(),
+            input_tokens: None,
+            output_tokens: None,
+            created_at: 0,
+        }
+    }
+
+    #[test]
+    fn old_tool_results_become_placeholders() {
+        let mut all = vec![
+            msg(
+                1,
+                Role::User,
+                "q0",
+                json!({ "role": "user", "content": "q0" }),
+            ),
+            msg(
+                2,
+                Role::Tool,
+                "全文在 /workspace/.outputs/abc。",
+                json!({ "role": "toolResult", "toolName": "exec", "content": [{ "type": "text", "text": "很长" }] }),
+            ),
+        ];
+        for i in 0..10 {
+            all.push(msg(
+                3 + 2 * i,
+                Role::User,
+                "q",
+                json!({ "role": "user", "content": "q" }),
+            ));
+            all.push(msg(
+                4 + 2 * i,
+                Role::Tool,
+                "近",
+                json!({ "role": "toolResult", "toolName": "exec", "content": [{ "type": "text", "text": "近" }] }),
+            ));
+        }
+        let live: Vec<&Message> = all.iter().collect();
+        let mut bodies: Vec<Value> = all.iter().map(|m| m.body.clone()).collect();
+        slim_old_tool_results(&live, &mut bodies);
+        assert_eq!(
+            bodies[1]["content"][0]["text"],
+            "[较早的 exec 结果已省略；全文在沙盒 /workspace/.outputs/abc]"
+        );
+        assert_eq!(bodies[3]["content"][0]["text"], "近");
+        assert_eq!(bodies[21]["content"][0]["text"], "近");
     }
 
     #[test]

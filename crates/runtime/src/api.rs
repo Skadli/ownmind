@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc};
 use ts_rs::TS;
 
-use crate::internal::{Chats, Supervisor};
+use crate::internal::{Chats, Supervisor, sandbox_tools};
 
 /// 协议版本：握手时双方必须一致。
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -396,6 +396,11 @@ pub struct Runtime {
     sup: Arc<Supervisor>,
     settings: Settings,
     chats: Arc<Chats>,
+}
+
+/// 沙盒工具集（exec、read_file、write_file、edit_file），供 server 注册。
+pub fn sandbox_tool_set(sandbox: ownmind_sandbox::api::Sandbox) -> Vec<Arc<dyn Tool>> {
+    sandbox_tools(sandbox)
 }
 
 impl Runtime {

@@ -1,4 +1,4 @@
 name: server
 purpose: 组装根：HTTP 路由、配置、启动迁移、托管 web 静态文件
-depends_on: [kernel, auth, settings, conversation, memory, schedule, skill, runtime]
+depends_on: [kernel, auth, settings, conversation, memory, schedule, skill, runtime, sandbox, sandboxd]
 owns_tables: []

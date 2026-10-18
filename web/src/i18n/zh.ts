@@ -65,6 +65,7 @@ export const zh = {
   "chat.empty": "说点什么开始吧。",
   "chat.thinking": "思考中…",
   "chat.tool": "正在使用 {name}…",
+  "chat.toolFailed": "失败",
   "chat.running": "上一条回复还在生成…",
   "chat.goSettings": "去设置模型",
   "error.busy": "这个会话正在回复，请等它结束或先停止。",

@@ -129,6 +129,7 @@ export function ChatPage({
     }
   };
 
+  const calls = toolCalls(messages);
   const busy = draft !== null || pending;
 
   return (
@@ -153,7 +154,12 @@ export function ChatPage({
           </p>
         )}
         {messages.map((m) => (
-          <Bubble key={m.id} from={m.role} text={m.text} />
+          <Bubble
+            key={m.id}
+            from={m.role}
+            text={m.text}
+            tool={m.role === "tool" ? toolInfo(m, calls) : undefined}
+          />
         ))}
         {draft &&
           (draft.thinking ? (
@@ -219,11 +225,64 @@ export function ChatPage({
   );
 }
 
-function Bubble({ from, text }: { from: Message["role"]; text: string }) {
+type ToolInfo = { name: string; summary: string; isError: boolean };
+
+/** 助手消息里的工具调用：id → 名字和参数。 */
+function toolCalls(
+  messages: Message[],
+): Map<string, { name: string; args: Record<string, unknown> }> {
+  const map = new Map<
+    string,
+    { name: string; args: Record<string, unknown> }
+  >();
+  for (const m of messages) {
+    const content = (m.body as { content?: unknown }).content;
+    if (m.role !== "assistant" || !Array.isArray(content)) continue;
+    for (const b of content as Record<string, unknown>[]) {
+      if (b.type === "toolCall" && typeof b.id === "string")
+        map.set(b.id, {
+          name: String(b.name ?? ""),
+          args: (b.arguments ?? {}) as Record<string, unknown>,
+        });
+    }
+  }
+  return map;
+}
+
+/** 工具结果消息 → 名字、参数摘要（命令或路径，截短）、是否出错。 */
+function toolInfo(m: Message, calls: ReturnType<typeof toolCalls>): ToolInfo {
+  const body = m.body as {
+    toolCallId?: string;
+    toolName?: string;
+    isError?: boolean;
+  };
+  const call = body.toolCallId ? calls.get(body.toolCallId) : undefined;
+  const arg = call?.args.command ?? call?.args.path ?? "";
+  const summary = String(arg).replace(/\s+/g, " ").slice(0, 80);
+  return {
+    name: call?.name || body.toolName || "tool",
+    summary,
+    isError: body.isError === true,
+  };
+}
+
+function Bubble({
+  from,
+  text,
+  tool,
+}: {
+  from: Message["role"];
+  text: string;
+  tool?: ToolInfo;
+}) {
   if (from === "tool")
     return (
       <details className="text-sm text-neutral-500">
-        <summary className="cursor-pointer">{text.slice(0, 80)}</summary>
+        <summary className="cursor-pointer">
+          <span className="font-mono">{tool?.name ?? "tool"}</span>
+          {tool?.summary ? ` · ${tool.summary}` : ""}
+          {tool?.isError ? ` · ${t("chat.toolFailed")}` : ""}
+        </summary>
         <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-neutral-100 p-2">
           {text}
         </pre>
