@@ -54,6 +54,7 @@ pub(crate) async fn build(
         messages,
         estimated_tokens,
         compaction,
+        tools: Vec::new(),
     })
 }
 
@@ -120,6 +121,7 @@ fn compaction_request(live: &[&Message], previous: Option<&str>) -> Option<Compa
             let who = match m.role {
                 Role::User => "主人",
                 Role::Assistant => "助手",
+                Role::Tool => "工具结果",
             };
             format!("[{who}]\n{}", m.text)
         })

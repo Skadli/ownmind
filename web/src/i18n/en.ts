@@ -71,6 +71,7 @@ export const en: Messages = {
   "chat.stop": "Stop",
   "chat.empty": "Say something to get started.",
   "chat.thinking": "Thinking…",
+  "chat.tool": "Using {name}…",
   "chat.running": "The previous reply is still being written…",
   "chat.goSettings": "Set up a model",
   "error.busy": "This conversation is already replying. Wait or stop it first.",

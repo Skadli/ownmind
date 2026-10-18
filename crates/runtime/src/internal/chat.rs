@@ -94,6 +94,39 @@ impl Chats {
             let mut finished = false;
             while let Some(ev) = run.events.recv().await {
                 let out = match ev {
+                    AgentEvent::Step {
+                        message,
+                        text,
+                        usage,
+                    } => {
+                        let msg = NewMessage {
+                            role: Role::Assistant,
+                            body: message,
+                            text,
+                            input_tokens: Some(usage.input),
+                            output_tokens: Some(usage.output),
+                        };
+                        saved_event(conversations.append(&conv, msg).await)
+                    }
+                    AgentEvent::ToolStart {
+                        tool_call_id,
+                        name,
+                        arguments,
+                    } => ChatEvent::ToolStart {
+                        tool_call_id,
+                        name,
+                        arguments,
+                    },
+                    AgentEvent::ToolEnd { message, text, .. } => {
+                        let msg = NewMessage {
+                            role: Role::Tool,
+                            body: message,
+                            text,
+                            input_tokens: None,
+                            output_tokens: None,
+                        };
+                        saved_event(conversations.append(&conv, msg).await)
+                    }
                     AgentEvent::TextDelta { delta } => ChatEvent::Delta { delta },
                     AgentEvent::ThinkingDelta { delta } => ChatEvent::Thinking { delta },
                     AgentEvent::Error { message } => ChatEvent::Error { message },
@@ -137,5 +170,16 @@ impl Chats {
             rt.chats_ref().active.lock().await.remove(&conv);
         });
         Ok(rx)
+    }
+}
+
+fn saved_event(
+    r: Result<ownmind_conversation::api::Message, ownmind_conversation::api::ConversationError>,
+) -> ChatEvent {
+    match r {
+        Ok(message) => ChatEvent::Saved { message },
+        Err(e) => ChatEvent::Error {
+            message: format!("保存消息失败：{e}"),
+        },
     }
 }

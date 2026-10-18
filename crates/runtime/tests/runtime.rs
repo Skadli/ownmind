@@ -2,7 +2,10 @@ use std::path::PathBuf;
 
 use ownmind_conversation::api::{Conversations, NewMessage, Role};
 use ownmind_kernel::MasterKey;
-use ownmind_runtime::api::{AgentEvent, ChatEvent, Runtime, RuntimeError, Usage};
+use ownmind_runtime::api::{
+    AgentEvent, ChatEvent, Runtime, RuntimeError, Tool, ToolContext, ToolFuture, ToolOutput,
+    ToolSpec, Usage,
+};
 use ownmind_settings::api::{CredentialInput, DefaultModel, ProviderKind, Settings};
 use sqlx::SqlitePool;
 
@@ -291,4 +294,117 @@ async fn long_conversations_are_compacted_keeping_six_turns() {
     assert_eq!((c.upto_seq, c.summary.as_str()), (4, "摘要至 4"));
     // 界面仍能拿到全部 15 条。
     assert_eq!(e.convs.messages(&conv.id).await.unwrap().len(), 15);
+}
+
+struct Echo;
+
+impl Tool for Echo {
+    fn spec(&self) -> ToolSpec {
+        ToolSpec {
+            name: "echo".into(),
+            description: "原样返回参数".into(),
+            parameters: serde_json::json!({ "type": "object", "properties": {} }),
+        }
+    }
+
+    fn call(&self, ctx: ToolContext, arguments: serde_json::Value) -> ToolFuture {
+        Box::pin(async move {
+            assert!(!ctx.conversation_id.is_empty());
+            ToolOutput::ok(arguments.to_string())
+        })
+    }
+}
+
+static FOREVER_DROPPED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+struct Forever;
+
+impl Tool for Forever {
+    fn spec(&self) -> ToolSpec {
+        ToolSpec {
+            name: "forever".into(),
+            description: "永不返回".into(),
+            parameters: serde_json::json!({ "type": "object" }),
+        }
+    }
+
+    fn call(&self, _: ToolContext, _: serde_json::Value) -> ToolFuture {
+        struct Guard;
+        impl Drop for Guard {
+            fn drop(&mut self) {
+                FOREVER_DROPPED.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+        Box::pin(async {
+            let _g = Guard;
+            std::future::pending::<ToolOutput>().await
+        })
+    }
+}
+
+fn tools() -> Vec<std::sync::Arc<dyn Tool>> {
+    vec![std::sync::Arc::new(Echo), std::sync::Arc::new(Forever)]
+}
+
+#[tokio::test]
+async fn tool_calls_run_and_every_message_is_saved_in_order() {
+    let e = env("tool:echo").await;
+    let conv = e.convs.create(None).await.unwrap();
+    let rt = Runtime::spawn_with_tools(fake_cmd(), e.convs.clone(), e.settings.clone(), tools());
+    let events = drain(rt.send(&conv.id, "用工具").await.unwrap()).await;
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, ChatEvent::ToolStart { name, .. } if name == "echo"))
+    );
+    let ChatEvent::Done { message } = events.last().unwrap() else {
+        panic!("{events:?}");
+    };
+    // 回放给模型时已包含 user、assistant(工具调用)、toolResult 三条。
+    assert_eq!(message.text, r#"工具说：{"x":1}；工具 echo,forever；3 条"#);
+    let roles: Vec<Role> = e
+        .convs
+        .messages(&conv.id)
+        .await
+        .unwrap()
+        .iter()
+        .map(|m| m.role)
+        .collect();
+    assert_eq!(
+        roles,
+        [Role::User, Role::Assistant, Role::Tool, Role::Assistant]
+    );
+}
+
+#[tokio::test]
+async fn unknown_tool_is_an_error_result_not_a_crash() {
+    let e = env("tool:nope").await;
+    let conv = e.convs.create(None).await.unwrap();
+    let rt = Runtime::spawn_with_tools(fake_cmd(), e.convs.clone(), e.settings.clone(), tools());
+    let events = drain(rt.send(&conv.id, "x").await.unwrap()).await;
+    assert!(
+        matches!(events.last().unwrap(), ChatEvent::Done { message } if message.text.starts_with("工具说：没有这个工具"))
+    );
+}
+
+#[tokio::test]
+async fn stopping_a_run_cancels_the_running_tool() {
+    let e = env("tool:forever").await;
+    let conv = e.convs.create(None).await.unwrap();
+    let rt = Runtime::spawn_with_tools(fake_cmd(), e.convs.clone(), e.settings.clone(), tools());
+    let mut rx = rt.send(&conv.id, "x").await.unwrap();
+    loop {
+        if let ChatEvent::ToolStart { .. } = rx.recv().await.unwrap() {
+            break;
+        }
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    rt.stop(&conv.id).await.unwrap();
+    let rest = drain(rx).await;
+    assert!(
+        matches!(rest.last(), Some(ChatEvent::Error { .. })),
+        "{rest:?}"
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert!(FOREVER_DROPPED.load(std::sync::atomic::Ordering::SeqCst));
 }

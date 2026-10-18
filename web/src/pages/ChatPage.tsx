@@ -19,7 +19,7 @@ type Props = {
 };
 
 /** 正在生成的回复。 */
-type Draft = { text: string; thinking: boolean };
+type Draft = { text: string; thinking: boolean; tool?: string };
 
 export function ChatPage({
   conversation,
@@ -97,6 +97,13 @@ export function ChatPage({
               thinking: false,
             }));
             break;
+          case "saved":
+            setMessages((m) => [...m, ev.message]);
+            setDraft({ text: "", thinking: true });
+            break;
+          case "tool_start":
+            setDraft({ text: "", thinking: true, tool: ev.name });
+            break;
           case "done":
             setMessages((m) => [...m, ev.message]);
             setDraft(null);
@@ -150,7 +157,11 @@ export function ChatPage({
         ))}
         {draft &&
           (draft.thinking ? (
-            <p className="text-sm text-neutral-400">{t("chat.thinking")}</p>
+            <p className="text-sm text-neutral-400">
+              {draft.tool
+                ? t("chat.tool").replace("{name}", draft.tool)
+                : t("chat.thinking")}
+            </p>
           ) : (
             <Bubble from="assistant" text={draft.text} />
           ))}
@@ -209,6 +220,17 @@ export function ChatPage({
 }
 
 function Bubble({ from, text }: { from: Message["role"]; text: string }) {
+  if (from === "tool")
+    return (
+      <details className="text-sm text-neutral-500">
+        <summary className="cursor-pointer">{text.slice(0, 80)}</summary>
+        <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-neutral-100 p-2">
+          {text}
+        </pre>
+      </details>
+    );
+  // 只含工具调用、没有文字的回复不显示气泡。
+  if (from === "assistant" && !text.trim()) return null;
   if (from === "user")
     return (
       <div className="flex justify-end">

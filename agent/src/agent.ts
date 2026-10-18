@@ -5,6 +5,8 @@ import type {
   Context,
   Model,
   MutableModels,
+  ToolCall,
+  ToolResultMessage,
 } from "@earendil-works/pi-ai";
 import type {
   AgentEvent,
@@ -15,6 +17,7 @@ import type {
   ModelSpec,
   RunCancelParams,
   RunStartParams,
+  ToolOutput,
 } from "./protocol/generated/protocol.js";
 import type { Peer } from "./rpc.js";
 
@@ -34,6 +37,15 @@ export type AgentDeps = {
   models: MutableModels;
   resolve: (spec: ModelSpec) => Model<Api>;
 };
+
+/** 单次运行最多的工具调用步数。 */
+const MAX_STEPS = 50;
+
+/** 供应商的 input 不含缓存命中部分；上下文大小要算全部提示 token。 */
+function usageOf(message: AssistantMessage) {
+  const u = message.usage;
+  return { input: u.input + u.cacheRead + u.cacheWrite, output: u.output };
+}
 
 function textOf(message: AssistantMessage): string {
   return message.content
@@ -109,40 +121,92 @@ export function startAgent({ peer, models, resolve }: AgentDeps): {
       const context = {
         systemPrompt: ctx.systemPrompt,
         messages: ctx.messages,
+        tools: ctx.tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters,
+        })),
       } as Context;
-      const stream = models.stream(model, context, {
-        apiKey: params.model.apiKey,
-        sessionId: params.conversationId,
-        signal,
-      });
-      for await (const ev of stream) {
-        if (ev.type === "text_delta")
-          emit(runId, { type: "text_delta", delta: ev.delta });
-        else if (ev.type === "thinking_delta")
-          emit(runId, { type: "thinking_delta", delta: ev.delta });
-        else if (ev.type === "done")
+      for (let step = 0; ; step++) {
+        if (step >= MAX_STEPS)
+          throw new Error(`工具调用超过 ${MAX_STEPS} 步，已停止`);
+        const message = await streamOnce(model, context, params, signal);
+        if (!message) return;
+        const usage = usageOf(message);
+        const calls = message.content.filter(
+          (b): b is ToolCall => b.type === "toolCall",
+        );
+        if (message.stopReason !== "toolUse" || calls.length === 0) {
+          emit(runId, { type: "done", message, text: textOf(message), usage });
+          return;
+        }
+        emit(runId, { type: "step", message, text: textOf(message), usage });
+        context.messages.push(message);
+        for (const call of calls) {
           emit(runId, {
-            type: "done",
-            message: ev.message,
-            text: textOf(ev.message),
-            usage: {
-              // 供应商的 input 不含缓存命中部分；上下文大小要算全部提示 token。
-              input:
-                ev.message.usage.input +
-                ev.message.usage.cacheRead +
-                ev.message.usage.cacheWrite,
-              output: ev.message.usage.output,
-            },
+            type: "tool_start",
+            toolCallId: call.id,
+            name: call.name,
+            arguments: call.arguments,
           });
-        else if (ev.type === "error")
+          const out = await peer.request<ToolOutput>("tool.call", {
+            runId,
+            conversationId: params.conversationId,
+            name: call.name,
+            arguments: call.arguments,
+          });
+          const result: ToolResultMessage = {
+            role: "toolResult",
+            toolCallId: call.id,
+            toolName: call.name,
+            content: [{ type: "text", text: out.content }],
+            isError: out.isError,
+            timestamp: Date.now(),
+          };
           emit(runId, {
-            type: "error",
-            message: ev.error.errorMessage ?? ev.reason,
+            type: "tool_end",
+            toolCallId: call.id,
+            name: call.name,
+            message: result,
+            text: out.content,
+            isError: out.isError,
           });
+          context.messages.push(result);
+          if (signal.aborted) throw new Error("已中止");
+        }
       }
     } catch (err) {
       emit(runId, { type: "error", message: (err as Error).message });
     }
+  }
+
+  /** 流式请求一次模型，转发增量；出错时发 error 事件并返回 null。 */
+  async function streamOnce(
+    model: Model<Api>,
+    context: Context,
+    params: RunStartParams,
+    signal: AbortSignal,
+  ): Promise<AssistantMessage | null> {
+    const stream = models.stream(model, context, {
+      apiKey: params.model.apiKey,
+      sessionId: params.conversationId,
+      signal,
+    });
+    for await (const ev of stream) {
+      if (ev.type === "text_delta")
+        emit(params.runId, { type: "text_delta", delta: ev.delta });
+      else if (ev.type === "thinking_delta")
+        emit(params.runId, { type: "thinking_delta", delta: ev.delta });
+      else if (ev.type === "done") return ev.message;
+      else if (ev.type === "error") {
+        emit(params.runId, {
+          type: "error",
+          message: ev.error.errorMessage ?? ev.reason,
+        });
+        return null;
+      }
+    }
+    throw new Error("模型流意外结束");
   }
 
   /** 用当前模型把较早的对话总结成结构化摘要（决策 005）。 */

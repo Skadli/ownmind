@@ -15,7 +15,7 @@ use tokio::sync::{Mutex, mpsc, oneshot, watch};
 use crate::api::{
     AgentEvent, ContextBuildParams, ContextCompactParams, InitializeParams, InitializeResult,
     ModelSpec, PROTOCOL_VERSION, Run, RunCancelParams, RunEventParams, RunStartParams,
-    RuntimeError,
+    RuntimeError, Tool, ToolCallParams, ToolContext, ToolOutput,
 };
 
 const READY_TIMEOUT: Duration = Duration::from_secs(15);
@@ -27,6 +27,9 @@ type Pending = HashMap<u64, oneshot::Sender<Result<Value, String>>>;
 pub(crate) struct Supervisor {
     conversations: Conversations,
     settings: Settings,
+    tools: Vec<Arc<dyn Tool>>,
+    /// 每个运行的中止信号，工具执行时监听。
+    cancels: Mutex<HashMap<String, watch::Sender<bool>>>,
     next_id: AtomicU64,
     pending: Mutex<Pending>,
     runs: Mutex<HashMap<String, mpsc::UnboundedSender<AgentEvent>>>,
@@ -41,11 +44,14 @@ impl Supervisor {
         cmd: Vec<String>,
         conversations: Conversations,
         settings: Settings,
+        tools: Vec<Arc<dyn Tool>>,
     ) -> Arc<Self> {
         assert!(!cmd.is_empty(), "agent 命令不能为空");
         let sup = Arc::new(Self {
             conversations,
             settings,
+            tools,
+            cancels: Mutex::new(HashMap::new()),
             next_id: AtomicU64::new(1),
             pending: Mutex::new(HashMap::new()),
             runs: Mutex::new(HashMap::new()),
@@ -64,6 +70,10 @@ impl Supervisor {
         let run_id = ownmind_kernel::new_id();
         let (tx, rx) = mpsc::unbounded_channel();
         self.runs.lock().await.insert(run_id.clone(), tx);
+        self.cancels
+            .lock()
+            .await
+            .insert(run_id.clone(), watch::channel(false).0);
         let params = RunStartParams {
             run_id: run_id.clone(),
             conversation_id: conversation_id.to_owned(),
@@ -71,6 +81,7 @@ impl Supervisor {
         };
         if let Err(e) = self.request("run.start", to_value(&params)).await {
             self.runs.lock().await.remove(&run_id);
+            self.cancels.lock().await.remove(&run_id);
             return Err(e);
         }
         Ok(Run {
@@ -80,6 +91,9 @@ impl Supervisor {
     }
 
     pub(crate) async fn cancel(&self, run_id: &str) -> Result<(), RuntimeError> {
+        if let Some(c) = self.cancels.lock().await.get(run_id) {
+            c.send_replace(true);
+        }
         let params = RunCancelParams {
             run_id: run_id.to_owned(),
         };
@@ -175,6 +189,33 @@ impl Supervisor {
         }
         if finished {
             runs.remove(&p.run_id);
+            if let Some(c) = self.cancels.lock().await.remove(&p.run_id) {
+                c.send_replace(true);
+            }
+        }
+    }
+
+    /// 执行工具；运行被中止时立即返回错误结果（工具的 future 随之丢弃）。
+    async fn call_tool(&self, p: ToolCallParams) -> ToolOutput {
+        let Some(tool) = self.tools.iter().find(|t| t.spec().name == p.name) else {
+            return ToolOutput::error(format!("没有这个工具：{}", p.name));
+        };
+        let cancel = self
+            .cancels
+            .lock()
+            .await
+            .get(&p.run_id)
+            .map(|c| c.subscribe());
+        let Some(mut cancel) = cancel else {
+            return ToolOutput::error("运行已结束");
+        };
+        let ctx = ToolContext {
+            run_id: p.run_id,
+            conversation_id: p.conversation_id,
+        };
+        tokio::select! {
+            out = tool.call(ctx, p.arguments) => out,
+            _ = cancel.wait_for(|c| *c) => ToolOutput::error("已中止"),
         }
     }
 
@@ -184,7 +225,10 @@ impl Supervisor {
             "context.build" => match serde_json::from_value::<ContextBuildParams>(params) {
                 Ok(p) => super::context::build(&self.conversations, &self.settings, &p)
                     .await
-                    .map(|r| to_value(&r)),
+                    .map(|mut r| {
+                        r.tools = self.tools.iter().map(|t| t.spec()).collect();
+                        to_value(&r)
+                    }),
                 Err(e) => Err(format!("参数不合法：{e}")),
             },
             "context.compact" => match serde_json::from_value::<ContextCompactParams>(params) {
@@ -194,6 +238,10 @@ impl Supervisor {
                     .await
                     .map(|()| serde_json::json!({}))
                     .map_err(|e| e.to_string()),
+                Err(e) => Err(format!("参数不合法：{e}")),
+            },
+            "tool.call" => match serde_json::from_value::<ToolCallParams>(params) {
+                Ok(p) => Ok(to_value(&self.call_tool(p).await)),
                 Err(e) => Err(format!("参数不合法：{e}")),
             },
             other => Err(format!("未知方法：{other}")),
@@ -214,6 +262,9 @@ impl Supervisor {
         self.ready.send_replace(false);
         *self.stdin.lock().await = None;
         self.pending.lock().await.clear();
+        for (_, c) in self.cancels.lock().await.drain() {
+            c.send_replace(true);
+        }
         for (_, tx) in self.runs.lock().await.drain() {
             let _ = tx.send(AgentEvent::Error {
                 message: format!("agent 意外退出：{reason}"),

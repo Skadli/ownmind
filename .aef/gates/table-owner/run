@@ -19,7 +19,8 @@ for name, m in mods.items():
     files = list((m["dir"] / "src").rglob("*.rs")) + list((m["dir"] / "migrations").glob("*.sql"))
     for f in files:
         for table in pat.findall(f.read_text()):
-            if table not in own:
+            # SQLite 改约束只能重建表：<自有表>__rebuild 视为自有的临时表。
+            if table not in own and table.removesuffix("__rebuild") not in own:
                 errors.append(f"{name}: {f.relative_to(root)} 引用了不属于本模块的表 {table}")
 for e in sorted(set(errors)): print(e)
 sys.exit(1 if errors else 0)

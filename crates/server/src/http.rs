@@ -390,6 +390,8 @@ async fn send_message(
                         ChatEvent::User { .. } => "user",
                         ChatEvent::Delta { .. } => "delta",
                         ChatEvent::Thinking { .. } => "thinking",
+                        ChatEvent::Saved { .. } => "saved",
+                        ChatEvent::ToolStart { .. } => "tool_start",
                         ChatEvent::Done { .. } => "done",
                         ChatEvent::Error { .. } => "error",
                     };

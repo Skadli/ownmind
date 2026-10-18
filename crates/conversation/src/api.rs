@@ -30,6 +30,8 @@ pub struct Conversation {
 pub enum Role {
     User,
     Assistant,
+    /// 工具结果（pi 的 toolResult 消息）。
+    Tool,
 }
 
 impl Role {
@@ -37,6 +39,7 @@ impl Role {
         match self {
             Self::User => "user",
             Self::Assistant => "assistant",
+            Self::Tool => "tool",
         }
     }
 }
@@ -99,10 +102,11 @@ impl From<MessageRow> for Message {
             id: r.id,
             conversation_id: r.conversation_id,
             seq: r.seq,
-            role: if r.role == "user" {
-                Role::User
-            } else {
-                Role::Assistant
+            role: match r.role.as_str() {
+                "user" => Role::User,
+                "assistant" => Role::Assistant,
+                "tool" => Role::Tool,
+                other => unreachable!("role 受 CHECK 约束：{other}"),
             },
             body: serde_json::from_str(&r.body).expect("body 由本模块写入，是合法 JSON"),
             text: r.text,

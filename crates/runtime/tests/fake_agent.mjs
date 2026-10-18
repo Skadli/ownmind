@@ -56,6 +56,58 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
     const ev = (event) =>
       send({ method: "run.event", params: { runId, event } });
     if (model.modelId === "slow") return; // 等 run.cancel
+    if (model.modelId.startsWith("tool:")) {
+      // 模拟一次工具调用：tool:<工具名>
+      const name = model.modelId.slice(5);
+      const toolCall = {
+        type: "toolCall",
+        id: "c1",
+        name,
+        arguments: { x: 1 },
+      };
+      ev({
+        type: "step",
+        message: {
+          role: "assistant",
+          content: [toolCall],
+          stopReason: "toolUse",
+        },
+        text: "",
+        usage: { input: 10, output: 2 },
+      });
+      ev({ type: "tool_start", toolCallId: "c1", name, arguments: { x: 1 } });
+      const out = await call("tool.call", {
+        runId,
+        conversationId,
+        name,
+        arguments: { x: 1 },
+      });
+      ev({
+        type: "tool_end",
+        toolCallId: "c1",
+        name,
+        message: {
+          role: "toolResult",
+          toolCallId: "c1",
+          toolName: name,
+          content: [{ type: "text", text: out.content }],
+          isError: out.isError,
+        },
+        text: out.content,
+        isError: out.isError,
+      });
+      const after = await call("context.build", {
+        conversationId,
+        contextWindow,
+      });
+      const text = `工具说：${out.content}；工具 ${after.tools.map((t) => t.name).join(",")}；${after.messages.length} 条`;
+      return ev({
+        type: "done",
+        message: { role: "assistant", content: [{ type: "text", text }] },
+        text,
+        usage: { input: 20, output: 5 },
+      });
+    }
     ev({ type: "text_delta", delta: `${ctx.messages.length} 条消息，` });
     ev({ type: "text_delta", delta: `模型 ${model.modelId}` });
     const text = `${ctx.messages.length} 条消息，模型 ${model.modelId}`;

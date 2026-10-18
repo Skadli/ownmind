@@ -3,7 +3,7 @@
 /**
  * agent 推送的运行事件。done / error 之后该运行结束。
  */
-export type AgentEvent = { "type": "text_delta", delta: string, } | { "type": "thinking_delta", delta: string, } | { "type": "done", 
+export type AgentEvent = { "type": "text_delta", delta: string, } | { "type": "thinking_delta", delta: string, } | { "type": "step", message: unknown, text: string, usage: Usage, } | { "type": "tool_start", toolCallId: string, name: string, arguments: Record<string, unknown>, } | { "type": "tool_end", toolCallId: string, name: string, message: unknown, text: string, isError: boolean, } | { "type": "done", 
 /**
  * pi 的 AssistantMessage JSON，原样存库、原样回放。
  */
@@ -43,7 +43,11 @@ estimatedTokens: number,
 /**
  * 超过窗口 70% 且可压缩时给出。
  */
-compaction: CompactionRequest | null, };
+compaction: CompactionRequest | null, 
+/**
+ * 本次可用的工具声明。
+ */
+tools: Array<ToolSpec>, };
 
 export type ContextCompactParams = { conversationId: string, uptoSeq: number, summary: string, };
 
@@ -65,5 +69,24 @@ export type RunCancelParams = { runId: string, };
 export type RunEventParams = { runId: string, event: AgentEvent, };
 
 export type RunStartParams = { runId: string, conversationId: string, model: ModelSpec, };
+
+/**
+ * agent→server：执行一次工具调用。
+ */
+export type ToolCallParams = { runId: string, conversationId: string, name: string, arguments: Record<string, unknown>, };
+
+/**
+ * 工具执行结果：给模型看的文本，以及是否出错。
+ */
+export type ToolOutput = { content: string, isError: boolean, };
+
+/**
+ * 交给模型的工具声明。
+ */
+export type ToolSpec = { name: string, description: string, 
+/**
+ * JSON Schema（object）。
+ */
+parameters: Record<string, unknown>, };
 
 export type Usage = { input: number, output: number, };

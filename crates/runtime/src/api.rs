@@ -150,6 +150,84 @@ pub struct ContextBuildResult {
     pub estimated_tokens: i64,
     /// 超过窗口 70% 且可压缩时给出。
     pub compaction: Option<CompactionRequest>,
+    /// 本次可用的工具声明。
+    pub tools: Vec<ToolSpec>,
+}
+
+/// 交给模型的工具声明。
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../../../../agent/src/protocol/generated/protocol.ts"
+)]
+#[ts(rename_all = "camelCase")]
+pub struct ToolSpec {
+    pub name: String,
+    pub description: String,
+    /// JSON Schema（object）。
+    #[ts(type = "Record<string, unknown>")]
+    pub parameters: serde_json::Value,
+}
+
+/// agent→server：执行一次工具调用。
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../../../../agent/src/protocol/generated/protocol.ts"
+)]
+#[ts(rename_all = "camelCase")]
+pub struct ToolCallParams {
+    pub run_id: String,
+    pub conversation_id: String,
+    pub name: String,
+    #[ts(type = "Record<string, unknown>")]
+    pub arguments: serde_json::Value,
+}
+
+/// 工具执行结果：给模型看的文本，以及是否出错。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../../../../agent/src/protocol/generated/protocol.ts"
+)]
+#[ts(rename_all = "camelCase")]
+pub struct ToolOutput {
+    pub content: String,
+    pub is_error: bool,
+}
+
+impl ToolOutput {
+    pub fn ok(content: impl Into<String>) -> Self {
+        Self {
+            content: content.into(),
+            is_error: false,
+        }
+    }
+
+    pub fn error(content: impl Into<String>) -> Self {
+        Self {
+            content: content.into(),
+            is_error: true,
+        }
+    }
+}
+
+/// 工具调用的上下文。
+#[derive(Debug, Clone)]
+pub struct ToolContext {
+    pub run_id: String,
+    pub conversation_id: String,
+}
+
+pub type ToolFuture = std::pin::Pin<Box<dyn std::future::Future<Output = ToolOutput> + Send>>;
+
+/// 一个工具：由各模块实现，server 组装时注册给 Runtime。
+pub trait Tool: Send + Sync {
+    fn spec(&self) -> ToolSpec;
+    fn call(&self, ctx: ToolContext, arguments: serde_json::Value) -> ToolFuture;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -171,13 +249,40 @@ pub struct Usage {
     export,
     export_to = "../../../../agent/src/protocol/generated/protocol.ts"
 )]
-#[ts(tag = "type", rename_all = "snake_case")]
+#[serde(rename_all_fields = "camelCase")]
+#[ts(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum AgentEvent {
     TextDelta {
         delta: String,
     },
     ThinkingDelta {
         delta: String,
+    },
+    /// 中间一步：带工具调用的 assistant 消息，存库后继续。
+    Step {
+        #[ts(type = "unknown")]
+        message: serde_json::Value,
+        text: String,
+        usage: Usage,
+    },
+    ToolStart {
+        tool_call_id: String,
+        name: String,
+        #[ts(type = "Record<string, unknown>")]
+        arguments: serde_json::Value,
+    },
+    /// 工具结果：pi 的 toolResult 消息，存库后继续。
+    ToolEnd {
+        tool_call_id: String,
+        name: String,
+        #[ts(type = "unknown")]
+        message: serde_json::Value,
+        text: String,
+        is_error: bool,
     },
     Done {
         /// pi 的 AssistantMessage JSON，原样存库、原样回放。
@@ -232,7 +337,14 @@ pub enum RuntimeError {
 /// 聊天流事件（给浏览器的 SSE）。
 #[derive(Debug, Clone, Serialize, TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
-#[ts(export, export_to = "chat.ts", tag = "type", rename_all = "snake_case")]
+#[serde(rename_all_fields = "camelCase")]
+#[ts(
+    export,
+    export_to = "chat.ts",
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum ChatEvent {
     /// 主人消息已保存。
     User {
@@ -244,6 +356,17 @@ pub enum ChatEvent {
     },
     Thinking {
         delta: String,
+    },
+    /// 运行中间已保存的消息（带工具调用的回复、工具结果）。
+    Saved {
+        #[ts(type = "import(\"./conversation\").Message")]
+        message: Message,
+    },
+    ToolStart {
+        tool_call_id: String,
+        name: String,
+        #[ts(type = "Record<string, unknown>")]
+        arguments: serde_json::Value,
     },
     /// 回复完成并已保存。
     Done {
@@ -278,8 +401,18 @@ pub struct Runtime {
 impl Runtime {
     /// 拉起 agent 子进程（cmd 为命令及参数），退出后自动重启。
     pub fn spawn(cmd: Vec<String>, conversations: Conversations, settings: Settings) -> Self {
+        Self::spawn_with_tools(cmd, conversations, settings, Vec::new())
+    }
+
+    /// 同 spawn，并注册工具。
+    pub fn spawn_with_tools(
+        cmd: Vec<String>,
+        conversations: Conversations,
+        settings: Settings,
+        tools: Vec<Arc<dyn Tool>>,
+    ) -> Self {
         Self {
-            sup: Supervisor::spawn(cmd, conversations.clone(), settings.clone()),
+            sup: Supervisor::spawn(cmd, conversations.clone(), settings.clone(), tools),
             settings,
             chats: Arc::new(Chats::new(conversations)),
         }

@@ -3,4 +3,4 @@
 /**
  * 聊天流事件（给浏览器的 SSE）。
  */
-export type ChatEvent = { "type": "user", message: import("./conversation").Message, } | { "type": "delta", delta: string, } | { "type": "thinking", delta: string, } | { "type": "done", message: import("./conversation").Message, } | { "type": "error", message: string, };
+export type ChatEvent = { "type": "user", message: import("./conversation").Message, } | { "type": "delta", delta: string, } | { "type": "thinking", delta: string, } | { "type": "saved", message: import("./conversation").Message, } | { "type": "tool_start", toolCallId: string, name: string, arguments: Record<string, unknown>, } | { "type": "done", message: import("./conversation").Message, } | { "type": "error", message: string, };

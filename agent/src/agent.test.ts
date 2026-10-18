@@ -2,6 +2,7 @@ import {
   createModels,
   fauxAssistantMessage,
   fauxProvider,
+  fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
 import { PROTOCOL_VERSION, startAgent } from "./agent.js";
@@ -26,11 +27,23 @@ function harness() {
     systemPrompt: "sys",
     messages: [{ role: "user", content: "你好", timestamp: 0 }],
     estimatedTokens: 10,
+    tools: [
+      {
+        name: "echo",
+        description: "echo",
+        parameters: { type: "object", properties: {} },
+      },
+    ],
     compaction:
       needsCompaction && compacted.length === 0
         ? { uptoSeq: 4, previousSummary: null, transcript: "[主人]\n早先" }
         : null,
   }));
+  const toolCalls: unknown[] = [];
+  server.on("tool.call", (p) => {
+    toolCalls.push(p);
+    return { content: "回声", isError: false };
+  });
   server.on("context.compact", (p) => {
     compacted.push(p);
     return {};
@@ -50,6 +63,7 @@ function harness() {
     agent,
     events,
     compacted,
+    toolCalls,
     needCompaction: () => {
       needsCompaction = true;
     },
@@ -96,6 +110,40 @@ describe("agent", () => {
     });
     await agent.idle();
     expect(events().at(-1)?.type).toBe("error");
+  });
+});
+
+describe("tool loop", () => {
+  it("calls tools until the model answers, emitting step/tool events", async () => {
+    const h = harness();
+    h.faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("echo", { x: 1 }, { id: "t1" })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("完成"),
+    ]);
+    await h.server.request("run.start", {
+      runId: "r4",
+      conversationId: "c1",
+      model: spec,
+    });
+    await h.agent.idle();
+    expect(h.toolCalls).toEqual([
+      { runId: "r4", conversationId: "c1", name: "echo", arguments: { x: 1 } },
+    ]);
+    const types = h.events().map((e) => (e as { type: string }).type);
+    expect(types.filter((t) => !t.endsWith("delta"))).toEqual([
+      "step",
+      "tool_start",
+      "tool_end",
+      "done",
+    ]);
+    const end = h
+      .events()
+      .find((e) => (e as { type: string }).type === "tool_end") as unknown as {
+      message: { role: string; toolCallId: string };
+    };
+    expect(end.message).toMatchObject({ role: "toolResult", toolCallId: "t1" });
   });
 });
 

@@ -17,4 +17,4 @@ body: unknown, text: string, inputTokens: number | null, outputTokens: number | 
 /**
  * 消息的发送方。
  */
-export type Role = "user" | "assistant";
+export type Role = "user" | "assistant" | "tool";
