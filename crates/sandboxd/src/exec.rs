@@ -1,6 +1,7 @@
 //! POST /exec：在工作目录里用 `sh -c` 跑命令；超时杀整个进程组，输出各限 1 MB。
 
 use std::process::Stdio;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::Json;
@@ -84,8 +85,16 @@ async fn run(
         .kill_on_drop(true)
         .spawn()?;
     let pgid = child.id().and_then(|id| i32::try_from(id).ok());
-    let out = tokio::spawn(read_capped(child.stdout.take().expect("piped")));
-    let err = tokio::spawn(read_capped(child.stderr.take().expect("piped")));
+    let out_buf = Captured::default();
+    let err_buf = Captured::default();
+    let out = tokio::spawn(read_capped(
+        child.stdout.take().expect("piped"),
+        out_buf.clone(),
+    ));
+    let err = tokio::spawn(read_capped(
+        child.stderr.take().expect("piped"),
+        err_buf.clone(),
+    ));
 
     let (status, timed_out) = match tokio::time::timeout(timeout, child.wait()).await {
         Ok(status) => (Some(status?), false),
@@ -97,8 +106,10 @@ async fn run(
     };
     // 后台子进程可能还握着管道：命令结束后再给 2 秒收尾，然后杀掉整组。
     let grace = Duration::from_secs(2);
-    let (stdout, stdout_truncated) = join_output(out, grace, pgid).await;
-    let (stderr, stderr_truncated) = join_output(err, grace, pgid).await;
+    let ((stdout, stdout_truncated), (stderr, stderr_truncated)) = tokio::join!(
+        join_output(out, &out_buf, grace, pgid),
+        join_output(err, &err_buf, grace, pgid),
+    );
     Ok(ExecResponse {
         exit_code: status.and_then(|s| s.code()),
         stdout,
@@ -110,20 +121,42 @@ async fn run(
     })
 }
 
+/// 读取任务写入的共享缓冲：任务被放弃时也能拿到已读部分。
+#[derive(Clone, Default)]
+struct Captured(Arc<Mutex<(Vec<u8>, bool)>>);
+
+impl Captured {
+    fn take(&self) -> (String, bool) {
+        let mut g = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (bytes, truncated) = std::mem::take(&mut *g);
+        (String::from_utf8_lossy(&bytes).into_owned(), truncated)
+    }
+}
+
+/// 等读取任务读到 EOF。超过收尾时间就杀进程组；用 setsid 等脱离进程组的后代仍握着管道时，
+/// 再等 500 毫秒后放弃读取（标为截断），保证请求一定返回。
 async fn join_output(
-    mut task: tokio::task::JoinHandle<(Vec<u8>, bool)>,
+    mut task: tokio::task::JoinHandle<()>,
+    buf: &Captured,
     grace: Duration,
     pgid: Option<i32>,
 ) -> (String, bool) {
-    let res = match tokio::time::timeout(grace, &mut task).await {
-        Ok(r) => r,
-        Err(_) => {
-            kill_group(pgid);
-            task.await
+    let mut abandoned = false;
+    if tokio::time::timeout(grace, &mut task).await.is_err() {
+        kill_group(pgid);
+        if tokio::time::timeout(Duration::from_millis(500), &mut task)
+            .await
+            .is_err()
+        {
+            task.abort();
+            abandoned = true;
         }
-    };
-    let (bytes, truncated) = res.unwrap_or_default();
-    (String::from_utf8_lossy(&bytes).into_owned(), truncated)
+    }
+    let (text, truncated) = buf.take();
+    (text, truncated || abandoned)
 }
 
 fn kill_group(pgid: Option<i32>) {
@@ -136,21 +169,22 @@ fn kill_group(pgid: Option<i32>) {
 }
 
 /// 读到 EOF；只保留前 MAX_OUTPUT 字节，其余读掉丢弃（避免写端阻塞）。
-async fn read_capped(mut r: impl AsyncRead + Unpin) -> (Vec<u8>, bool) {
-    let mut kept = Vec::new();
-    let mut truncated = false;
+async fn read_capped(mut r: impl AsyncRead + Unpin, out: Captured) {
     let mut buf = vec![0u8; 64 * 1024];
     loop {
         match r.read(&mut buf).await {
             Ok(0) | Err(_) => break,
             Ok(n) => {
-                let room = MAX_OUTPUT - kept.len();
+                let mut g = out
+                    .0
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let room = MAX_OUTPUT - g.0.len();
                 if n > room {
-                    truncated = true;
+                    g.1 = true;
                 }
-                kept.extend_from_slice(&buf[..n.min(room)]);
+                g.0.extend_from_slice(&buf[..n.min(room)]);
             }
         }
     }
-    (kept, truncated)
 }

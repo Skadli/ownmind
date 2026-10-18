@@ -105,6 +105,31 @@ async fn exec_timeout_kills_process_group() {
 }
 
 #[tokio::test]
+async fn exec_returns_even_if_a_descendant_escapes_the_process_group() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(&dir);
+    let started = std::time::Instant::now();
+    // setsid 让后台进程离开进程组并继续握着 stdout：请求仍要在收尾时间后返回。
+    let v = ok(
+        &app,
+        "/exec",
+        json!({"command": "setsid sleep 30 & echo hi", "timeoutSecs": 5}),
+    )
+    .await;
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(v["exitCode"], 0);
+    assert_eq!(v["stdout"], "hi\n");
+    assert_eq!(v["stdoutTruncated"], true);
+    let _ = std::process::Command::new("pkill")
+        .args(["-f", "^sleep 30$"])
+        .status();
+}
+
+#[tokio::test]
 async fn exec_output_is_capped() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(&dir);
