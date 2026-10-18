@@ -1,0 +1,15 @@
+# CodeRabbit 审查配置：dev → main 的 PR 自动审查。
+language: zh-CN
+reviews:
+  profile: chill
+  request_changes_workflow: true
+  high_level_summary: true
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches: [main]
+  path_filters:
+    - "!**/generated/**"
+    - "!pnpm-lock.yaml"
+    - "!Cargo.lock"
+    - "!migrations.lock"
