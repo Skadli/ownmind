@@ -28,6 +28,7 @@ pub(crate) struct Supervisor {
     conversations: Conversations,
     settings: Settings,
     tools: Vec<Arc<dyn Tool>>,
+    memory: Option<ownmind_memory::api::Memory>,
     /// 每个运行的中止信号，工具执行时监听。
     cancels: Mutex<HashMap<String, watch::Sender<bool>>>,
     next_id: AtomicU64,
@@ -45,12 +46,14 @@ impl Supervisor {
         conversations: Conversations,
         settings: Settings,
         tools: Vec<Arc<dyn Tool>>,
+        memory: Option<ownmind_memory::api::Memory>,
     ) -> Arc<Self> {
         assert!(!cmd.is_empty(), "agent 命令不能为空");
         let sup = Arc::new(Self {
             conversations,
             settings,
             tools,
+            memory,
             cancels: Mutex::new(HashMap::new()),
             next_id: AtomicU64::new(1),
             pending: Mutex::new(HashMap::new()),
@@ -223,12 +226,17 @@ impl Supervisor {
     async fn answer(&self, id: Value, method: &str, params: Value) {
         let result = match method {
             "context.build" => match serde_json::from_value::<ContextBuildParams>(params) {
-                Ok(p) => super::context::build(&self.conversations, &self.settings, &p)
-                    .await
-                    .map(|mut r| {
-                        r.tools = self.tools.iter().map(|t| t.spec()).collect();
-                        to_value(&r)
-                    }),
+                Ok(p) => super::context::build(
+                    &self.conversations,
+                    &self.settings,
+                    self.memory.as_ref(),
+                    &p,
+                )
+                .await
+                .map(|mut r| {
+                    r.tools = self.tools.iter().map(|t| t.spec()).collect();
+                    to_value(&r)
+                }),
                 Err(e) => Err(format!("参数不合法：{e}")),
             },
             "context.compact" => match serde_json::from_value::<ContextCompactParams>(params) {

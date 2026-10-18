@@ -1,6 +1,7 @@
 //! 上下文组装（决策 005）：系统提示 → 摘要 → 摘要后的原文 → 末尾时间片段；超窗 70% 时请求压缩。
 
 use ownmind_conversation::api::{Conversations, Message, Role};
+use ownmind_memory::api::Memory;
 use ownmind_settings::api::{Profile, Settings};
 use serde_json::{Value, json};
 
@@ -19,6 +20,7 @@ const KEEP_TOOL_TURNS: usize = 10;
 pub(crate) async fn build(
     conversations: &Conversations,
     settings: &Settings,
+    memory: Option<&Memory>,
     p: &ContextBuildParams,
 ) -> Result<ContextBuildResult, String> {
     let profile = settings.profile().await.map_err(|e| e.to_string())?;
@@ -42,6 +44,10 @@ pub(crate) async fn build(
 
     let mut system_prompt = SYSTEM_PROMPT.to_owned();
     system_prompt.push_str(&core_layer(&profile, &system.timezone));
+    if let Some(m) = memory {
+        let core = m.core().await.map_err(|e| e.to_string())?;
+        system_prompt.push_str(&memory_layer(&core));
+    }
     if let Some(s) = summary {
         system_prompt.push_str("\n\n## 之前对话的摘要\n");
         system_prompt.push_str(s);
@@ -77,6 +83,16 @@ fn core_layer(p: &Profile, timezone: &str) -> String {
     }
     lines.push(format!("- 时区：{timezone}"));
     format!("\n\n## 主人资料\n{}", lines.join("\n"))
+}
+
+/// 核心记忆层（决策 005 第 4 层）。
+fn memory_layer(core: &str) -> String {
+    let body = if core.is_empty() {
+        "（还是空的）"
+    } else {
+        core
+    };
+    format!("\n\n## 核心记忆（可用 memory 工具修改；更多细节用 memory search 检索）\n{body}")
 }
 
 /// token 估算：最后一条带 usage 的回复，其 input+output 就是到它为止的上下文；之后的按字符估。
@@ -238,6 +254,12 @@ mod tests {
     fn estimates_cjk_heavier_than_ascii() {
         assert_eq!(estimate_chars("abcdefgh"), 2 + 4);
         assert_eq!(estimate_chars("你好"), 2 + 4);
+    }
+
+    #[test]
+    fn memory_layer_shows_core_or_placeholder() {
+        assert!(memory_layer("爱喝茶").ends_with("爱喝茶"));
+        assert!(memory_layer("").contains("还是空的"));
     }
 
     #[test]

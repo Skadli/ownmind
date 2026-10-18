@@ -80,8 +80,15 @@ impl App {
         let conversations = Conversations::new(db.clone());
         let settings = Settings::new(db.clone(), key.clone());
         tools.extend(ownmind_runtime::api::web_tool_set(settings.clone()));
-        let runtime =
-            Runtime::spawn_with_tools(agent_cmd, conversations.clone(), settings.clone(), tools);
+        let memory = ownmind_memory::api::Memory::new(db.clone());
+        tools.extend(ownmind_runtime::api::memory_tool_set(memory.clone()));
+        let runtime = Runtime::spawn_full(
+            agent_cmd,
+            conversations.clone(),
+            settings.clone(),
+            tools,
+            Some(memory),
+        );
         Self {
             auth: Auth::new(db, key),
             conversations,
@@ -114,6 +121,7 @@ pub async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
         &ownmind_auth::api::MIGRATOR,
         &ownmind_conversation::api::MIGRATOR,
         &ownmind_settings::api::MIGRATOR,
+        &ownmind_memory::api::MIGRATOR,
     ];
     let mut migrations: Vec<_> = modules.iter().flat_map(|m| m.iter().cloned()).collect();
     migrations.sort_by_key(|m| m.version);

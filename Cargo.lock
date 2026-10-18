@@ -1132,6 +1132,11 @@ name = "ownmind-memory"
 version = "0.0.0"
 dependencies = [
  "ownmind-kernel",
+ "serde",
+ "sqlx",
+ "tempfile",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]
