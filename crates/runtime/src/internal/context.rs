@@ -35,7 +35,10 @@ pub(crate) async fn build(
         Some(c) => (Some(c.summary.as_str()), c.upto_seq),
         None => (None, 0),
     };
-    let live: Vec<&Message> = all.iter().filter(|m| m.seq > upto).collect();
+    // 旧工具结果先换成占位：估算、压缩请求和最终消息都用同一份表示。
+    let mut live_owned: Vec<Message> = all.iter().filter(|m| m.seq > upto).cloned().collect();
+    slim_old_tool_results(&mut live_owned);
+    let live: Vec<&Message> = live_owned.iter().collect();
 
     let mut system_prompt = SYSTEM_PROMPT.to_owned();
     system_prompt.push_str(&core_layer(&profile, &system.timezone));
@@ -50,7 +53,6 @@ pub(crate) async fn build(
         .flatten();
 
     let mut messages: Vec<Value> = live.iter().map(|m| m.body.clone()).collect();
-    slim_old_tool_results(&live, &mut messages);
     append_time(&mut messages, ownmind_kernel::now_ms(), &system.timezone);
     Ok(ContextBuildResult {
         system_prompt,
@@ -161,7 +163,8 @@ fn append_time(messages: &mut [Value], now_ms: i64, timezone: &str) {
 }
 
 /// 超过最近 KEEP_TOOL_TURNS 轮的工具结果换成一行占位（决策 005.4），原文仍在库里。
-fn slim_old_tool_results(live: &[&Message], messages: &mut [Value]) {
+/// 同时改 body 和 text，这样 token 估算与压缩请求也只看到占位。
+fn slim_old_tool_results(live: &mut [Message]) {
     let user_idx: Vec<usize> = live
         .iter()
         .enumerate()
@@ -172,29 +175,30 @@ fn slim_old_tool_results(live: &[&Message], messages: &mut [Value]) {
         return;
     }
     let cutoff = user_idx[user_idx.len() - KEEP_TOOL_TURNS];
-    for (m, body) in live.iter().zip(messages.iter_mut()).take(cutoff) {
+    for m in live.iter_mut().take(cutoff) {
         if m.role != Role::Tool {
             continue;
         }
-        let name = body
+        let name = m
+            .body
             .get("toolName")
             .and_then(Value::as_str)
-            .unwrap_or("工具");
+            .unwrap_or("工具")
+            .to_owned();
         let path = m
             .text
             .find(".outputs/")
             .map(|i| {
                 let rest = &m.text[i..];
                 let end = rest
-                    .find(|c: char| c.is_whitespace() || "，。）)\"'".contains(c))
+                    .find(|c: char| c.is_whitespace() || "，。）)\\\"'".contains(c))
                     .unwrap_or(rest.len());
                 format!("；全文在沙盒 /workspace/{}", &rest[..end])
             })
             .unwrap_or_default();
-        body["content"] = json!([{
-            "type": "text",
-            "text": format!("[较早的 {name} 结果已省略{path}]")
-        }]);
+        let note = format!("[较早的 {name} 结果已省略{path}]");
+        m.body["content"] = json!([{ "type": "text", "text": note }]);
+        m.text = note;
     }
 }
 
@@ -293,9 +297,10 @@ mod tests {
                 json!({ "role": "toolResult", "toolName": "exec", "content": [{ "type": "text", "text": "近" }] }),
             ));
         }
-        let live: Vec<&Message> = all.iter().collect();
-        let mut bodies: Vec<Value> = all.iter().map(|m| m.body.clone()).collect();
-        slim_old_tool_results(&live, &mut bodies);
+        slim_old_tool_results(&mut all);
+        let bodies: Vec<Value> = all.iter().map(|m| m.body.clone()).collect();
+        assert!(all[1].text.starts_with("[较早的 exec"));
+        assert_eq!(all[3].text, "近");
         assert_eq!(
             bodies[1]["content"][0]["text"],
             "[较早的 exec 结果已省略；全文在沙盒 /workspace/.outputs/abc]"

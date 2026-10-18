@@ -112,9 +112,9 @@ impl Sandbox {
                 &serde_json::json!({ "path": path, "content": content }),
             )
             .await?;
-        Ok(v.get("bytes")
+        v.get("bytes")
             .and_then(serde_json::Value::as_u64)
-            .unwrap_or(0))
+            .ok_or_else(|| SandboxError::Rejected("沙盒返回格式不对：缺少有效的 bytes".into()))
     }
 
     pub async fn edit(
