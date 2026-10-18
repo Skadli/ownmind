@@ -18,8 +18,13 @@ async fn main() -> anyhow::Result<()> {
         }
         None => {
             let key = master_key(&config.data_dir)?;
-            ownmind_kernel::load_or_create_token(&config.sandbox_token_file)?;
-            let app = App::new(pool, key, config.agent_cmd.clone());
+            let token = ownmind_kernel::load_or_create_token(&config.sandbox_token_file)?;
+            let tools = config.sandbox_url.as_deref().map_or_else(Vec::new, |url| {
+                ownmind_runtime::api::sandbox_tool_set(ownmind_sandbox::api::Sandbox::new(
+                    url, &token,
+                ))
+            });
+            let app = App::with_tools(pool, key, config.agent_cmd.clone(), tools);
             serve(config, app).await
         }
         Some(other) => anyhow::bail!("未知命令：{other}（可用：migrate）"),

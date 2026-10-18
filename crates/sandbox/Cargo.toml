@@ -7,6 +7,14 @@ publish = false
 
 [dependencies]
 ownmind-kernel = { path = "../kernel" }
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+axum.workspace = true
+tokio.workspace = true
 
 [lints]
 workspace = true

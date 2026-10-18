@@ -24,6 +24,8 @@ pub struct Config {
     pub agent_cmd: Vec<String>,
     /// 与沙盒共享的令牌文件（决策 003）；首次启动时生成。
     pub sandbox_token_file: PathBuf,
+    /// 沙盒服务地址；缺省为 Compose 里的 http://sandbox:8788，设为空字符串则不启用沙盒工具。
+    pub sandbox_url: Option<String>,
 }
 
 impl Config {
@@ -40,7 +42,10 @@ impl Config {
             |_| PathBuf::from(&data_dir).join("sandbox.token"),
             PathBuf::from,
         );
+        let sandbox_url =
+            std::env::var("OWNMIND_SANDBOX_URL").unwrap_or_else(|_| "http://sandbox:8788".into());
         Ok(Self {
+            sandbox_url: (!sandbox_url.is_empty()).then_some(sandbox_url),
             sandbox_token_file,
             agent_cmd,
             addr: addr.parse()?,
@@ -62,9 +67,20 @@ pub struct App {
 impl App {
     /// 组装各模块并拉起 agent 子进程。需要在 tokio 运行时里调用。
     pub fn new(db: SqlitePool, key: MasterKey, agent_cmd: Vec<String>) -> Self {
+        Self::with_tools(db, key, agent_cmd, Vec::new())
+    }
+
+    /// 同 new，并给 agent 注册工具。
+    pub fn with_tools(
+        db: SqlitePool,
+        key: MasterKey,
+        agent_cmd: Vec<String>,
+        tools: Vec<std::sync::Arc<dyn ownmind_runtime::api::Tool>>,
+    ) -> Self {
         let conversations = Conversations::new(db.clone());
         let settings = Settings::new(db.clone(), key.clone());
-        let runtime = Runtime::spawn(agent_cmd, conversations.clone(), settings.clone());
+        let runtime =
+            Runtime::spawn_with_tools(agent_cmd, conversations.clone(), settings.clone(), tools);
         Self {
             auth: Auth::new(db, key),
             conversations,
