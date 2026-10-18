@@ -13,6 +13,7 @@ pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 const MAX_LABEL_CHARS: usize = 100;
 const DEFAULT_MODEL_KEY: &str = "default_model";
 const PROFILE_KEY: &str = "profile";
+const SEARCH_KEY: &str = "search";
 const SYSTEM_KEY: &str = "system";
 const MAX_NAME_CHARS: usize = 100;
 const MAX_BIO_CHARS: usize = 2000;
@@ -152,8 +153,87 @@ impl std::fmt::Debug for ResolvedModel {
     }
 }
 
+/// 联网搜索后端。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "settings.ts", rename_all = "lowercase")]
+pub enum SearchProvider {
+    Brave,
+    Tavily,
+    Searxng,
+}
+
+/// 页面看到的搜索配置：没有 Key，只有末 4 位提示。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "settings.ts", rename_all = "camelCase")]
+pub struct SearchConfig {
+    pub provider: SearchProvider,
+    /// SearXNG 的地址。
+    pub base_url: Option<String>,
+    pub key_hint: Option<String>,
+}
+
+/// 保存搜索配置。api_key 为空表示保留原 Key（同一供应商下）。
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "settings.ts", rename_all = "camelCase")]
+pub struct SearchInput {
+    pub provider: SearchProvider,
+    #[ts(optional)]
+    pub base_url: Option<String>,
+    #[ts(optional)]
+    pub api_key: Option<String>,
+}
+
+/// runtime 用的完整搜索配置，含明文 Key。
+#[derive(Clone)]
+pub struct ResolvedSearch {
+    pub provider: SearchProvider,
+    pub base_url: Option<String>,
+    pub api_key: Option<String>,
+}
+
+impl std::fmt::Debug for ResolvedSearch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResolvedSearch")
+            .field("provider", &self.provider)
+            .field("base_url", &self.base_url)
+            .finish_non_exhaustive()
+    }
+}
+
+/// 库里存的搜索配置（Key 为主密钥加密后的十六进制）。
+#[derive(Serialize, Deserialize)]
+struct StoredSearch {
+    provider: SearchProvider,
+    base_url: Option<String>,
+    key_hex: Option<String>,
+    key_hint: Option<String>,
+}
+
+fn to_hex(b: &[u8]) -> String {
+    use std::fmt::Write;
+    b.iter().fold(String::new(), |mut s, x| {
+        let _ = write!(s, "{x:02x}");
+        s
+    })
+}
+
+fn from_hex(s: &str) -> Option<Vec<u8>> {
+    if !s.len().is_multiple_of(2) || !s.is_ascii() {
+        return None;
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
+        .collect()
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum SettingsError {
+    #[error("Brave / Tavily 需要填 API Key；SearXNG 需要填地址")]
+    InvalidSearch,
     #[error("凭据不存在")]
     NotFound,
     #[error("名称不能为空，且不超过 {MAX_LABEL_CHARS} 个字符")]
@@ -416,6 +496,108 @@ impl Settings {
         };
         self.put_pref(SYSTEM_KEY, &p).await?;
         Ok(p)
+    }
+
+    /// 当前搜索配置；没配过返回 None。
+    pub async fn search_config(&self) -> Result<Option<SearchConfig>, SettingsError> {
+        Ok(self.stored_search().await?.map(|s| SearchConfig {
+            provider: s.provider,
+            base_url: s.base_url,
+            key_hint: s.key_hint,
+        }))
+    }
+
+    pub async fn set_search_config(
+        &self,
+        input: SearchInput,
+    ) -> Result<SearchConfig, SettingsError> {
+        let old = self
+            .stored_search()
+            .await?
+            .filter(|o| o.provider == input.provider);
+        let base_url = input
+            .base_url
+            .map(|u| u.trim().trim_end_matches('/').to_owned())
+            .filter(|u| !u.is_empty());
+        if base_url.as_deref().is_some_and(|u| !valid_base_url(u)) {
+            return Err(SettingsError::InvalidBaseUrl);
+        }
+        let new_key = input
+            .api_key
+            .map(|k| k.trim().to_owned())
+            .filter(|k| !k.is_empty());
+        let stored = if input.provider == SearchProvider::Searxng {
+            StoredSearch {
+                provider: input.provider,
+                base_url: Some(base_url.ok_or(SettingsError::InvalidSearch)?),
+                key_hex: None,
+                key_hint: None,
+            }
+        } else {
+            let (key_hex, key_hint) = match (new_key, old) {
+                (Some(k), _) => (to_hex(&self.key.encrypt(k.as_bytes())), key_hint(&k)),
+                (
+                    None,
+                    Some(StoredSearch {
+                        key_hex: Some(h),
+                        key_hint: Some(t),
+                        ..
+                    }),
+                ) => (h, t),
+                _ => return Err(SettingsError::InvalidSearch),
+            };
+            StoredSearch {
+                provider: input.provider,
+                base_url: None,
+                key_hex: Some(key_hex),
+                key_hint: Some(key_hint),
+            }
+        };
+        self.put_pref(SEARCH_KEY, &stored).await?;
+        Ok(SearchConfig {
+            provider: stored.provider,
+            base_url: stored.base_url,
+            key_hint: stored.key_hint,
+        })
+    }
+
+    pub async fn clear_search_config(&self) -> Result<(), SettingsError> {
+        sqlx::query("DELETE FROM settings_preference WHERE key = ?")
+            .bind(SEARCH_KEY)
+            .execute(&self.db)
+            .await?;
+        Ok(())
+    }
+
+    /// 搜索配置 + 解密后的 Key，给 web_search 工具用。
+    pub async fn resolve_search(&self) -> Result<Option<ResolvedSearch>, SettingsError> {
+        let Some(s) = self.stored_search().await? else {
+            return Ok(None);
+        };
+        let api_key = match s.key_hex {
+            Some(h) => {
+                let bytes = from_hex(&h).ok_or(ownmind_kernel::SecretError::Decrypt)?;
+                Some(
+                    String::from_utf8(self.key.decrypt(&bytes)?)
+                        .map_err(|_| ownmind_kernel::SecretError::Decrypt)?,
+                )
+            }
+            None => None,
+        };
+        Ok(Some(ResolvedSearch {
+            provider: s.provider,
+            base_url: s.base_url,
+            api_key,
+        }))
+    }
+
+    async fn stored_search(&self) -> Result<Option<StoredSearch>, SettingsError> {
+        let value: Option<String> =
+            sqlx::query_scalar("SELECT value FROM settings_preference WHERE key = ?")
+                .bind(SEARCH_KEY)
+                .fetch_optional(&self.db)
+                .await?;
+        Ok(value.and_then(|v| serde_json::from_str(&v).ok()))
     }
 
     async fn get_pref<T: serde::de::DeserializeOwned + Default>(

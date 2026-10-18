@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc};
 use ts_rs::TS;
 
-use crate::internal::{Chats, Supervisor, sandbox_tools};
+use crate::internal::{Chats, Supervisor, sandbox_tools, web_tools};
 
 /// 协议版本：握手时双方必须一致。
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -401,6 +401,27 @@ pub struct Runtime {
 /// 沙盒工具集（exec、read_file、write_file、edit_file），供 server 注册。
 pub fn sandbox_tool_set(sandbox: ownmind_sandbox::api::Sandbox) -> Vec<Arc<dyn Tool>> {
     sandbox_tools(sandbox)
+}
+
+/// 联网工具的可调参数；生产用 `WebOptions::default()`。
+#[derive(Debug, Clone, Default)]
+pub struct WebOptions {
+    /// 允许访问内网/回环地址（仅测试用，生产必须 false）。
+    pub allow_private: bool,
+    /// 覆盖 Brave 搜索接口地址（测试用）。
+    pub brave_endpoint: Option<String>,
+    /// 覆盖 Tavily 搜索接口地址（测试用）。
+    pub tavily_endpoint: Option<String>,
+}
+
+/// 联网工具集（web_search、web_fetch），供 server 注册。
+pub fn web_tool_set(settings: Settings) -> Vec<Arc<dyn Tool>> {
+    web_tools(settings, WebOptions::default())
+}
+
+/// 同 web_tool_set，可调参数。
+pub fn web_tool_set_with(settings: Settings, options: WebOptions) -> Vec<Arc<dyn Tool>> {
+    web_tools(settings, options)
 }
 
 impl Runtime {

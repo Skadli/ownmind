@@ -6,6 +6,8 @@ import {
   type CredentialInput,
   type DefaultModel,
   type ProviderKind,
+  type SearchConfig,
+  type SearchProvider,
 } from "../api/client";
 import { errorText, type MessageKey, t } from "../i18n";
 
@@ -18,6 +20,10 @@ const KINDS: ProviderKind[] = [
   "deepseek",
   "openrouter",
 ];
+
+const SEARCH_PROVIDERS: SearchProvider[] = ["brave", "tavily", "searxng"];
+const searchName = (p: SearchProvider) =>
+  p === "searxng" ? "SearXNG" : p === "brave" ? "Brave Search" : "Tavily";
 
 const kindName = (k: ProviderKind) => t(`kind.${k}` as MessageKey);
 const needsUrl = (k: ProviderKind) => k.endsWith("-compatible");
@@ -38,6 +44,12 @@ export function AccountPage({ onUnauthenticated }: Props) {
   });
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [search, setSearch] = useState<SearchConfig | null>(null);
+  const [searchDraft, setSearchDraft] = useState<{
+    provider: SearchProvider;
+    baseUrl: string;
+    apiKey: string;
+  }>({ provider: "brave", baseUrl: "", apiKey: "" });
 
   const run = useCallback(
     async (action: () => Promise<void>) => {
@@ -57,10 +69,18 @@ export function AccountPage({ onUnauthenticated }: Props) {
   const reload = useCallback(
     () =>
       run(async () => {
-        const [list, current] = await Promise.all([
+        const [list, current, searchCfg] = await Promise.all([
           api.listCredentials(),
           api.getDefaultModel(),
+          api.getSearch(),
         ]);
+        setSearch(searchCfg);
+        if (searchCfg)
+          setSearchDraft({
+            provider: searchCfg.provider,
+            baseUrl: searchCfg.baseUrl ?? "",
+            apiKey: "",
+          });
         setItems(list);
         setModel(current ?? { credentialId: list[0]?.id ?? "", modelId: "" });
       }),
@@ -96,6 +116,31 @@ export function AccountPage({ onUnauthenticated }: Props) {
     run(async () => {
       await api.setDefaultModel(model);
       setSaved(true);
+    });
+  };
+
+  const saveSearch = (e: FormEvent) => {
+    e.preventDefault();
+    run(async () => {
+      const { provider, baseUrl, apiKey } = searchDraft;
+      setSearch(
+        await api.setSearch(
+          provider === "searxng"
+            ? { provider, baseUrl }
+            : { provider, apiKey: apiKey || undefined },
+        ),
+      );
+      setSearchDraft({ ...searchDraft, apiKey: "" });
+      setSaved(true);
+    });
+  };
+
+  const clearSearch = () => {
+    if (!window.confirm(t("search.clearConfirm"))) return;
+    run(async () => {
+      await api.clearSearch();
+      setSearch(null);
+      setSearchDraft({ provider: "brave", baseUrl: "", apiKey: "" });
     });
   };
 
@@ -285,6 +330,91 @@ export function AccountPage({ onUnauthenticated }: Props) {
           )}
         </form>
       )}
+
+      <form
+        onSubmit={saveSearch}
+        className="space-y-3 rounded-2xl bg-white p-4 shadow-sm"
+      >
+        <div>
+          <h3 className="font-medium">{t("search.title")}</h3>
+          <p className="text-sm text-neutral-500">{t("search.hint")}</p>
+          {search && (
+            <p className="mt-1 text-sm text-neutral-500">
+              {t("search.current")}
+              {searchName(search.provider)}
+              {search.baseUrl ? ` · ${search.baseUrl}` : ""}
+              {search.keyHint ? ` · ${search.keyHint}` : ""}
+            </p>
+          )}
+        </div>
+        <label className="block space-y-1">
+          <span className="text-sm">{t("search.provider")}</span>
+          <select
+            value={searchDraft.provider}
+            onChange={(e) =>
+              setSearchDraft({
+                ...searchDraft,
+                provider: e.target.value as SearchProvider,
+              })
+            }
+            className={input}
+          >
+            {SEARCH_PROVIDERS.map((p) => (
+              <option key={p} value={p}>
+                {searchName(p)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {searchDraft.provider === "searxng" ? (
+          <label className="block space-y-1">
+            <span className="text-sm">{t("search.baseUrl")}</span>
+            <input
+              value={searchDraft.baseUrl}
+              onChange={(e) =>
+                setSearchDraft({ ...searchDraft, baseUrl: e.target.value })
+              }
+              placeholder="http://searxng:8080"
+              className={input}
+            />
+          </label>
+        ) : (
+          <label className="block space-y-1">
+            <span className="text-sm">{t("search.apiKey")}</span>
+            <input
+              type="password"
+              autoComplete="off"
+              value={searchDraft.apiKey}
+              onChange={(e) =>
+                setSearchDraft({ ...searchDraft, apiKey: e.target.value })
+              }
+              placeholder={
+                search?.provider === searchDraft.provider
+                  ? t("account.apiKeyKeep")
+                  : ""
+              }
+              className={input}
+            />
+          </label>
+        )}
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            className="rounded-lg bg-neutral-900 px-4 py-2 text-white"
+          >
+            {t("account.save")}
+          </button>
+          {search && (
+            <button
+              type="button"
+              onClick={clearSearch}
+              className="rounded-lg px-4 py-2 text-red-600 hover:bg-neutral-100"
+            >
+              {t("search.clear")}
+            </button>
+          )}
+        </div>
+      </form>
     </section>
   );
 }

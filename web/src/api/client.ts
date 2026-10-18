@@ -7,6 +7,9 @@ import type {
   Language,
   Profile,
   ProviderKind,
+  SearchConfig,
+  SearchInput,
+  SearchProvider,
   SystemPrefs,
 } from "./generated/settings";
 import { SseParser } from "./sse";
@@ -21,6 +24,9 @@ export type {
   Message,
   Profile,
   ProviderKind,
+  SearchConfig,
+  SearchInput,
+  SearchProvider,
   SystemPrefs,
 };
 
@@ -87,6 +93,10 @@ export const api = {
     request<Credential>("PATCH", `/settings/credentials/${id}`, input),
   deleteCredential: (id: string) =>
     request<void>("DELETE", `/settings/credentials/${id}`),
+  getSearch: () => request<SearchConfig | null>("GET", "/settings/search"),
+  setSearch: (input: SearchInput) =>
+    request<SearchConfig>("PUT", "/settings/search", input),
+  clearSearch: () => request<void>("DELETE", "/settings/search"),
   getProfile: () => request<Profile>("GET", "/settings/profile"),
   setProfile: (p: Profile) => request<Profile>("PUT", "/settings/profile", p),
   getSystem: () => request<SystemPrefs>("GET", "/settings/system"),

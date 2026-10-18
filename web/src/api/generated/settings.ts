@@ -32,6 +32,25 @@ preferredName: string, bio: string, };
 export type ProviderKind = "openai-compatible" | "anthropic-compatible" | "openai" | "anthropic" | "google" | "deepseek" | "openrouter";
 
 /**
+ * 页面看到的搜索配置：没有 Key，只有末 4 位提示。
+ */
+export type SearchConfig = { provider: SearchProvider, 
+/**
+ * SearXNG 的地址。
+ */
+baseUrl: string | null, keyHint: string | null, };
+
+/**
+ * 保存搜索配置。api_key 为空表示保留原 Key（同一供应商下）。
+ */
+export type SearchInput = { provider: SearchProvider, baseUrl?: string, apiKey?: string, };
+
+/**
+ * 联网搜索后端。
+ */
+export type SearchProvider = "brave" | "tavily" | "searxng";
+
+/**
  * 系统偏好。
  */
 export type SystemPrefs = { language: Language, 

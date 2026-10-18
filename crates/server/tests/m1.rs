@@ -53,7 +53,18 @@ async fn hundred_turns_with_compaction() {
 
     for i in 0..100 {
         let text = format!("第 {i} 轮：{}", "说点什么。".repeat(10));
-        let mut rx = app.runtime.send(&conv.id, &text).await.unwrap();
+        // agent 子进程刚拉起时可能还没握手完，最多等 10 秒。
+        let mut tries = 0;
+        let mut rx = loop {
+            match app.runtime.send(&conv.id, &text).await {
+                Ok(rx) => break rx,
+                Err(ownmind_runtime::api::RuntimeError::AgentUnavailable(_)) if tries < 100 => {
+                    tries += 1;
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+                Err(e) => panic!("发送失败：{e}"),
+            }
+        };
         let last = loop {
             let ev = rx.recv().await.unwrap();
             if ev.is_final() {

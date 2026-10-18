@@ -58,6 +58,18 @@ export const en: Messages = {
   "kind.google": "Google",
   "kind.deepseek": "DeepSeek",
   "kind.openrouter": "OpenRouter",
+  "search.title": "Web search",
+  "search.hint":
+    "Lets the agent search the web. The key is stored encrypted and only its last 4 characters are shown.",
+  "search.none": "Disabled",
+  "search.provider": "Search service",
+  "search.baseUrl": "SearXNG URL",
+  "search.apiKey": "API Key",
+  "search.current": "Current: ",
+  "search.clear": "Disable",
+  "search.clearConfirm": "Disable web search and delete the saved key?",
+  "error.invalid_search":
+    "Brave / Tavily need an API key; SearXNG needs a URL.",
   "error.invalid_label": "Name is required (max 100 characters).",
   "error.invalid_base_url":
     "Base URL must start with http:// or https:// (required for compatible endpoints).",

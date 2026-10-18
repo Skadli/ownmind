@@ -15,7 +15,8 @@ use ownmind_auth::api::{AuthError, SESSION_TTL_MS};
 use ownmind_conversation::api::{Conversation, ConversationError, Message};
 use ownmind_runtime::api::{ChatEvent, RuntimeError};
 use ownmind_settings::api::{
-    Credential, CredentialInput, DefaultModel, Profile, SettingsError, SystemPrefs,
+    Credential, CredentialInput, DefaultModel, Profile, SearchConfig, SearchInput, SettingsError,
+    SystemPrefs,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -56,6 +57,10 @@ pub fn router(app: App, web_dir: &Path) -> Router {
         .route(
             "/settings/credentials/{id}",
             patch(update_credential).delete(delete_credential),
+        )
+        .route(
+            "/settings/search",
+            get(get_search).put(put_search).delete(delete_search),
         )
         .route("/settings/profile", get(get_profile).put(put_profile))
         .route("/settings/system", get(get_system).put(put_system))
@@ -124,6 +129,7 @@ impl From<SettingsError> for ApiError {
             SettingsError::InvalidBaseUrl => unprocessable("invalid_base_url"),
             SettingsError::MissingKey => unprocessable("missing_key"),
             SettingsError::InvalidModel => unprocessable("invalid_model"),
+            SettingsError::InvalidSearch => unprocessable("invalid_search"),
             SettingsError::InvalidProfile => unprocessable("invalid_profile"),
             SettingsError::InvalidTimezone => unprocessable("invalid_timezone"),
             SettingsError::NoDefaultModel => Self(StatusCode::CONFLICT, "no_default_model"),
@@ -501,4 +507,26 @@ async fn put_system(
     Json(body): Json<SystemPrefs>,
 ) -> Result<Json<SystemPrefs>, ApiError> {
     Ok(Json(app.settings.set_system(body).await?))
+}
+
+// ---------- 设置：联网搜索 ----------
+
+async fn get_search(
+    _: Owner,
+    State(app): State<App>,
+) -> Result<Json<Option<SearchConfig>>, ApiError> {
+    Ok(Json(app.settings.search_config().await?))
+}
+
+async fn put_search(
+    _: Owner,
+    State(app): State<App>,
+    Json(body): Json<SearchInput>,
+) -> Result<Json<SearchConfig>, ApiError> {
+    Ok(Json(app.settings.set_search_config(body).await?))
+}
+
+async fn delete_search(_: Owner, State(app): State<App>) -> Result<StatusCode, ApiError> {
+    app.settings.clear_search_config().await?;
+    Ok(StatusCode::NO_CONTENT)
 }

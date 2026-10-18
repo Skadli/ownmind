@@ -75,10 +75,11 @@ impl App {
         db: SqlitePool,
         key: MasterKey,
         agent_cmd: Vec<String>,
-        tools: Vec<std::sync::Arc<dyn ownmind_runtime::api::Tool>>,
+        mut tools: Vec<std::sync::Arc<dyn ownmind_runtime::api::Tool>>,
     ) -> Self {
         let conversations = Conversations::new(db.clone());
         let settings = Settings::new(db.clone(), key.clone());
+        tools.extend(ownmind_runtime::api::web_tool_set(settings.clone()));
         let runtime =
             Runtime::spawn_with_tools(agent_cmd, conversations.clone(), settings.clone(), tools);
         Self {

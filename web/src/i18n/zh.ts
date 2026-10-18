@@ -53,6 +53,17 @@ export const zh = {
   "kind.google": "Google",
   "kind.deepseek": "DeepSeek",
   "kind.openrouter": "OpenRouter",
+  "search.title": "联网搜索",
+  "search.hint":
+    "让 agent 能搜网页。Key 加密保存，只显示末 4 位；不配置则 web_search 提示未配置。",
+  "search.none": "不启用",
+  "search.provider": "搜索服务",
+  "search.baseUrl": "SearXNG 地址",
+  "search.apiKey": "API Key",
+  "search.current": "当前：",
+  "search.clear": "停用",
+  "search.clearConfirm": "停用联网搜索并删除已保存的 Key？",
+  "error.invalid_search": "Brave / Tavily 需要填 API Key；SearXNG 需要填地址。",
   "error.invalid_label": "名称不能为空，且不超过 100 个字符。",
   "error.invalid_base_url":
     "地址必须以 http:// 或 https:// 开头（兼容类必填）。",
