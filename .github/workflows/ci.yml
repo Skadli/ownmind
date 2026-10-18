@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: 门禁
         run: .aef/gates/run-all.sh .
@@ -48,8 +50,13 @@ jobs:
 
       - name: 测试（含空库迁移、真实 agent 的 100 轮聊天）
         run: |
+          set -o pipefail
           pnpm -C agent build
-          cargo test --workspace
+          # 失败时把失败的测试写成注解（CI 日志需要登录才能看，注解是公开的）
+          cargo test --workspace 2>&1 | tee test.log || {
+            grep -E -A3 "panicked at|^test .* FAILED|^---- " test.log | head -40 | sed 's/^/::error::/'
+            exit 1
+          }
           pnpm -r test
 
       - name: 生成的 TS 类型与代码一致
@@ -66,6 +73,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: docker/setup-buildx-action@v3
 
       - name: 构建镜像
@@ -76,6 +85,15 @@ jobs:
           tags: ownmind:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: 构建沙盒镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: sandbox
+          load: true
+          tags: ownmind-sandbox:ci
+          cache-from: type=gha
 
       - name: 镜像构建失败时输出错误
         if: failure()
@@ -88,7 +106,7 @@ jobs:
         working-directory: deploy
         run: |
           cp .env.example .env
-          sed -i 's/^OWNMIND_DOMAIN=.*/OWNMIND_DOMAIN=localhost/; s#^OWNMIND_IMAGE=.*#OWNMIND_IMAGE=ownmind:ci#' .env
+          sed -i 's/^OWNMIND_DOMAIN=.*/OWNMIND_DOMAIN=localhost/; s#^OWNMIND_IMAGE=.*#OWNMIND_IMAGE=ownmind:ci#; s#^OWNMIND_SANDBOX_IMAGE=.*#OWNMIND_SANDBOX_IMAGE=ownmind-sandbox:ci#' .env
           echo OWNMIND_TEST_FAUX=1 >> .env
           docker compose up -d --wait --wait-timeout 120
           test "$(docker compose ps -a migrate --format '{{.ExitCode}}')" = 0
@@ -101,6 +119,20 @@ jobs:
           curl -fsSk -b jar -X PUT -H 'content-type: application/json' -d "{\"credentialId\":\"$cred\",\"modelId\":\"faux\"}" https://localhost/api/settings/default-model
           curl -fsSkN -b jar -H 'content-type: application/json' -d '{"text":"hello"}' https://localhost/api/conversations/$conv/messages | tee chat.txt
           grep -q 'event: done' chat.txt && grep -q 'faux: hello' chat.txt
+          # 沙盒：从主服务容器经内部网络调用 sandboxd，带令牌能执行，不带令牌 401
+          docker compose exec -T ownmind node -e '
+            const t = require("fs").readFileSync("/secret/sandbox.token", "utf8").trim();
+            const call = (h) => fetch("http://sandbox:8788/exec", { method: "POST", headers: { "content-type": "application/json", ...h }, body: JSON.stringify({ command: "git --version && python3 --version && echo ok > hi.txt && cat hi.txt" }) });
+            (async () => {
+              const bad = await call({});
+              if (bad.status !== 401) throw new Error("无令牌应 401，实际 " + bad.status);
+              const r = await call({ authorization: "Bearer " + t });
+              const j = await r.json();
+              console.log(j);
+              if (r.status !== 200 || j.exitCode !== 0 || !j.stdout.includes("ok")) throw new Error("沙盒执行失败");
+            })().catch((e) => { console.error(e); process.exit(1); });'
+          # 沙盒看不到主服务的数据目录
+          if docker compose exec -T sandbox test -e /data; then echo '沙盒不应挂载 /data'; exit 1; fi
           # 重启后数据还在、迁移幂等
           docker compose down
           docker compose up -d --wait --wait-timeout 120
@@ -121,6 +153,8 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -135,4 +169,14 @@ jobs:
           tags: |
             ghcr.io/skadli/ownmind:edge
             ghcr.io/skadli/ownmind:sha-${{ github.sha }}
+          cache-from: type=gha
+      - name: 发布沙盒 edge 镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: sandbox
+          push: true
+          tags: |
+            ghcr.io/skadli/ownmind-sandbox:edge
+            ghcr.io/skadli/ownmind-sandbox:sha-${{ github.sha }}
           cache-from: type=gha

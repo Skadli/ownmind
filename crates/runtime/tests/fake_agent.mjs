@@ -96,11 +96,9 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
         text: out.content,
         isError: out.isError,
       });
-      const after = await call("context.build", {
-        conversationId,
-        contextWindow,
-      });
-      const text = `工具说：${out.content}；工具 ${after.tools.map((t) => t.name).join(",")}；${after.messages.length} 条`;
+      // 和真实 agent 一样只在运行开始时取上下文：报告开始时的条数（不在运行中途重取，
+      // 否则会和 server 异步保存 step/tool 消息竞争）。
+      const text = `工具说：${out.content}；工具 ${ctx.tools.map((t) => t.name).join(",")}；${ctx.messages.length} 条`;
       return ev({
         type: "done",
         message: { role: "assistant", content: [{ type: "text", text }] },
