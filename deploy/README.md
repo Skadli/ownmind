@@ -15,4 +15,5 @@ docker compose ps       # migrate 为 exited (0)，ownmind 为 healthy
 - 升级：`docker compose pull && docker compose up -d`（每次启动都会先跑迁移）
 - 数据：卷 `ownmind_ownmind-data`（SQLite），备份前先 `docker compose stop ownmind`
 - 日志：`docker compose logs -f ownmind`
-- 从源码构建镜像：在仓库根目录 `docker build -t ownmind:local .`，`.env` 里 `OWNMIND_IMAGE=ownmind:local`
+- 从源码构建镜像：在仓库根目录 `docker build -t ownmind:local .` 和 `docker build --target sandbox -t ownmind-sandbox:local .`，`.env` 里 `OWNMIND_IMAGE=ownmind:local`、`OWNMIND_SANDBOX_IMAGE=ownmind-sandbox:local`
+- 沙盒：`sandbox` 服务是 agent 执行命令、读写文件的地方，只挂自己的工作目录卷（`sandbox-workspace`），不暴露端口、不挂 docker.sock；CPU/内存上限在 `.env` 里调。想清空沙盒：`docker compose down && docker volume rm ownmind_sandbox-workspace`

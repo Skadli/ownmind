@@ -2,7 +2,7 @@
 
 mod secret;
 
-pub use secret::{MasterKey, SecretError};
+pub use secret::{MasterKey, SecretError, load_or_create_token};
 
 /// 新建一个 ID：UUIDv7 文本（决策 007）。按生成时间有序。
 pub fn new_id() -> String {

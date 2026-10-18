@@ -22,6 +22,8 @@ pub struct Config {
     pub data_dir: PathBuf,
     /// 启动 agent 子进程的命令（空格分隔）。
     pub agent_cmd: Vec<String>,
+    /// 与沙盒共享的令牌文件（决策 003）；首次启动时生成。
+    pub sandbox_token_file: PathBuf,
 }
 
 impl Config {
@@ -34,7 +36,12 @@ impl Config {
             .unwrap_or_else(|_| "node agent/dist/index.js".into());
         let agent_cmd: Vec<String> = agent_cmd.split_whitespace().map(str::to_owned).collect();
         anyhow::ensure!(!agent_cmd.is_empty(), "OWNMIND_AGENT_CMD 不能为空");
+        let sandbox_token_file = std::env::var("OWNMIND_SANDBOX_TOKEN_FILE").map_or_else(
+            |_| PathBuf::from(&data_dir).join("sandbox.token"),
+            PathBuf::from,
+        );
         Ok(Self {
+            sandbox_token_file,
             agent_cmd,
             addr: addr.parse()?,
             web_dir: web_dir.into(),
