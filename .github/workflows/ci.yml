@@ -9,6 +9,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# 默认只读；需要写 GHCR 的只有下面仅在 main 上运行的 publish job。
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -60,7 +64,6 @@ jobs:
     needs: check
     permissions:
       contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v3
@@ -108,11 +111,28 @@ jobs:
         working-directory: deploy
         run: docker compose logs
 
+  publish:
+    # 只有 main 的 push 才发布 edge 镜像；GHCR 写权限只给这个 job，dev 与 PR 上的运行拿不到。
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    needs: docker
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: 发布 edge 镜像
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker tag ownmind:ci ghcr.io/skadli/ownmind:edge
-          docker tag ownmind:ci ghcr.io/skadli/ownmind:sha-${GITHUB_SHA::7}
-          docker push ghcr.io/skadli/ownmind:edge
-          docker push ghcr.io/skadli/ownmind:sha-${GITHUB_SHA::7}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/skadli/ownmind:edge
+            ghcr.io/skadli/ownmind:sha-${{ github.sha }}
+          cache-from: type=gha
