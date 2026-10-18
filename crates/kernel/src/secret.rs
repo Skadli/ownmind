@@ -83,6 +83,28 @@ impl MasterKey {
     }
 }
 
+/// 主服务与沙盒之间的共享令牌（决策 003）：读取文件；不存在时生成 32 字节随机数的十六进制（权限 600）。
+pub fn load_or_create_token(path: &Path) -> std::io::Result<String> {
+    match std::fs::read_to_string(path) {
+        Ok(s) if !s.trim().is_empty() => Ok(s.trim().to_owned()),
+        Ok(_) => Err(std::io::Error::other(format!(
+            "令牌文件 {} 为空",
+            path.display()
+        ))),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if let Some(dir) = path.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            let mut raw = [0u8; 32];
+            getrandom::fill(&mut raw).expect("系统随机数不可用");
+            let token: String = raw.iter().map(|b| format!("{b:02x}")).collect();
+            write_private(path, token.as_bytes())?;
+            Ok(token)
+        }
+        Err(e) => Err(e),
+    }
+}
+
 #[cfg(unix)]
 fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
@@ -103,6 +125,15 @@ fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn token_is_created_once_and_reused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("secret/sandbox.token");
+        let a = load_or_create_token(&path).unwrap();
+        assert_eq!(a.len(), 64);
+        assert_eq!(load_or_create_token(&path).unwrap(), a);
+    }
 
     #[test]
     fn round_trip_and_tamper_detection() {

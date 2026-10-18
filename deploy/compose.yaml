@@ -6,6 +6,7 @@ x-ownmind: &ownmind
   env_file: .env
   volumes:
     - ownmind-data:/data
+    - sandbox-secret:/secret
 
 services:
   # 先迁移：一次性任务，成功退出后 server 才启动
@@ -20,6 +21,20 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+
+  # 沙盒：agent 的命令和文件操作都在这里（决策 003）。不暴露端口，只在 Compose 网络内可达。
+  sandbox:
+    image: ${OWNMIND_SANDBOX_IMAGE:-ghcr.io/skadli/ownmind-sandbox:edge}
+    restart: unless-stopped
+    cpus: ${OWNMIND_SANDBOX_CPUS:-1.0}
+    mem_limit: ${OWNMIND_SANDBOX_MEMORY:-1g}
+    pids_limit: 512
+    volumes:
+      - sandbox-workspace:/workspace
+      - sandbox-secret:/secret:ro
+    depends_on:
+      ownmind:
+        condition: service_healthy
 
   caddy:
     image: caddy:2
@@ -40,5 +55,7 @@ services:
 
 volumes:
   ownmind-data:
+  sandbox-workspace:
+  sandbox-secret:
   caddy-data:
   caddy-config:

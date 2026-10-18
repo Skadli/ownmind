@@ -360,8 +360,7 @@ async fn tool_calls_run_and_every_message_is_saved_in_order() {
     let ChatEvent::Done { message } = events.last().unwrap() else {
         panic!("{events:?}");
     };
-    // 回放给模型时已包含 user、assistant(工具调用)、toolResult 三条。
-    assert_eq!(message.text, r#"工具说：{"x":1}；工具 echo,forever；3 条"#);
+    assert_eq!(message.text, r#"工具说：{"x":1}；工具 echo,forever；1 条"#);
     let roles: Vec<Role> = e
         .convs
         .messages(&conv.id)
@@ -373,6 +372,15 @@ async fn tool_calls_run_and_every_message_is_saved_in_order() {
     assert_eq!(
         roles,
         [Role::User, Role::Assistant, Role::Tool, Role::Assistant]
+    );
+    // 下一轮回放给模型：上一轮的 user、assistant(工具调用)、toolResult、assistant 加新的 user。
+    while rt.is_running(&conv.id).await {
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    let events = drain(rt.send(&conv.id, "再用一次").await.unwrap()).await;
+    assert!(
+        matches!(events.last().unwrap(), ChatEvent::Done { message } if message.text.ends_with("；5 条")),
+        "{events:?}"
     );
 }
 

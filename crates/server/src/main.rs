@@ -18,6 +18,7 @@ async fn main() -> anyhow::Result<()> {
         }
         None => {
             let key = master_key(&config.data_dir)?;
+            ownmind_kernel::load_or_create_token(&config.sandbox_token_file)?;
             let app = App::new(pool, key, config.agent_cmd.clone());
             serve(config, app).await
         }
