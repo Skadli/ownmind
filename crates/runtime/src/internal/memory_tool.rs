@@ -20,6 +20,7 @@ struct MemoryTool {
 struct In {
     action: String,
     text: Option<String>,
+    base: Option<String>,
     id: Option<String>,
     query: Option<String>,
 }
@@ -30,7 +31,8 @@ impl Tool for MemoryTool {
             name: "memory".into(),
             description: "主人的长期记忆，跨会话保留。核心记忆（约 2000 token，每次对话都会带上）\
 放主人的资料与长期偏好；记忆条目放其他值得记住的事，需要时再检索。\
-action：read_core 读核心记忆；write_core 整体替换核心记忆（text，先 read_core 再合并修改）；\
+action：read_core 读核心记忆；write_core 整体替换核心记忆（text 为新全文；base 为刚 read_core 读到的原文，核心记忆为空时可省略；\
+别的会话改过则冲突，须重新读取再合并）；\
 add 新增条目（text）；delete 删除条目（id）；search 按关键词检索条目（query，空格分隔表示都要命中）；\
 recent 最近的条目。"
                 .into(),
@@ -38,6 +40,7 @@ recent 最近的条目。"
                 "action": { "type": "string",
                     "enum": ["read_core", "write_core", "add", "delete", "search", "recent"] },
                 "text": { "type": "string" },
+                "base": { "type": "string" },
                 "id": { "type": "string" },
                 "query": { "type": "string" }
             }, "required": ["action"] }),
@@ -85,7 +88,9 @@ async fn run(m: &Memory, a: In) -> Result<String, String> {
             })
         }
         "write_core" => {
-            m.set_core(&need(a.text, "text")?).await.map_err(err)?;
+            m.set_core(a.base.as_deref().unwrap_or(""), &need(a.text, "text")?)
+                .await
+                .map_err(err)?;
             Ok("核心记忆已更新".into())
         }
         "add" => {

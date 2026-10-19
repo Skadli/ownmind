@@ -18,6 +18,8 @@ pub enum MemoryError {
     CoreTooLong(i64),
     #[error("记忆条目不能为空，且不超过 {ENTRY_MAX_CHARS} 字")]
     BadEntry,
+    #[error("核心记忆已被别的会话改过，请重新 read_core 后合并再写")]
+    Conflict,
     #[error("数据库错误：{0}")]
     Db(#[from] sqlx::Error),
 }
@@ -56,21 +58,31 @@ impl Memory {
         Ok(row.map(|r| r.0).unwrap_or_default())
     }
 
-    /// 整体替换核心记忆；超过 2k token 拒绝。
-    pub async fn set_core(&self, content: &str) -> Result<(), MemoryError> {
+    /// 整体替换核心记忆；超过 2k token 拒绝。仅当当前内容仍等于 `base`（读到的那版）
+    /// 才写入，否则返回 Conflict，调用方须重新读取并合并。
+    pub async fn set_core(&self, base: &str, content: &str) -> Result<(), MemoryError> {
         let content = content.trim();
         let t = estimate_tokens(content);
         if t > CORE_MAX_TOKENS {
             return Err(MemoryError::CoreTooLong(t));
+        }
+        let now = now_ms();
+        let mut tx = self.db.begin().await?;
+        let cur: Option<(String,)> = sqlx::query_as("SELECT content FROM mem_core WHERE id = 1")
+            .fetch_optional(&mut *tx)
+            .await?;
+        if cur.map(|r| r.0).unwrap_or_default() != base.trim() {
+            return Err(MemoryError::Conflict);
         }
         sqlx::query(
             "INSERT INTO mem_core (id, content, updated_at) VALUES (1, ?, ?) \
              ON CONFLICT(id) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
         )
         .bind(content)
-        .bind(now_ms())
-        .execute(&self.db)
+        .bind(now)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(())
     }
 
@@ -168,12 +180,12 @@ mod tests {
     async fn core_roundtrip_and_limit() {
         let (m, _d) = mem().await;
         assert_eq!(m.core().await.unwrap(), "");
-        m.set_core("喜欢喝茶").await.unwrap();
-        m.set_core("喜欢喝咖啡").await.unwrap();
+        m.set_core("", "喜欢喝茶").await.unwrap();
+        m.set_core("喜欢喝茶", "喜欢喝咖啡").await.unwrap();
         assert_eq!(m.core().await.unwrap(), "喜欢喝咖啡");
         let long = "字".repeat(2001);
         assert!(matches!(
-            m.set_core(&long).await,
+            m.set_core("喜欢喝咖啡", &long).await,
             Err(MemoryError::CoreTooLong(_))
         ));
         assert_eq!(m.core().await.unwrap(), "喜欢喝咖啡");
