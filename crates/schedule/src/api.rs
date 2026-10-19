@@ -3,7 +3,7 @@
 use ownmind_kernel::{new_id, now_ms};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 
 /// 本模块的数据库迁移，由 server 合并执行。
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
@@ -162,18 +162,23 @@ fn plan(s: &Schedule, now: i64) -> Result<(&'static str, Option<i64>, i64), Sche
 #[derive(Clone)]
 pub struct Scheduler {
     db: SqlitePool,
-    due: broadcast::Sender<TaskDue>,
+    subs: std::sync::Arc<std::sync::Mutex<Vec<mpsc::UnboundedSender<TaskDue>>>>,
 }
 
 impl Scheduler {
     pub fn new(db: SqlitePool) -> Self {
-        let (due, _) = broadcast::channel(64);
-        Self { db, due }
+        Self {
+            db,
+            subs: Default::default(),
+        }
     }
 
     /// 订阅任务到期事件。
-    pub fn subscribe(&self) -> broadcast::Receiver<TaskDue> {
-        self.due.subscribe()
+    /// 使用无界队列：事件不会因消费慢而丢失（任务已推进 next_run_at）。
+    pub fn subscribe(&self) -> mpsc::UnboundedReceiver<TaskDue> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.subs.lock().unwrap().push(tx);
+        rx
     }
 
     pub async fn create(&self, input: TaskInput) -> Result<Task, ScheduleError> {
@@ -318,7 +323,8 @@ impl Scheduler {
         let n = tasks.len();
         for task in tasks {
             // 没有订阅者时发送失败是正常的。
-            let _ = self.due.send(TaskDue { task });
+            let mut subs = self.subs.lock().unwrap();
+            subs.retain(|tx| tx.send(TaskDue { task: task.clone() }).is_ok());
         }
         Ok(n)
     }

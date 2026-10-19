@@ -132,14 +132,8 @@ impl App {
         });
         let app = self.clone_for_scheduler();
         tokio::spawn(async move {
-            loop {
-                match due.recv().await {
-                    Ok(ev) => app.run_due(ev.task).await,
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                        tracing::warn!(missed = n, "task due events dropped");
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-                }
+            while let Some(ev) = due.recv().await {
+                app.run_due(ev.task).await;
             }
         });
     }
