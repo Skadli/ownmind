@@ -487,3 +487,73 @@ async fn profile_and_system_settings_over_http() {
         .await;
     assert_eq!(sys, json!({ "language": "en", "timezone": "Europe/Paris" }));
 }
+
+#[tokio::test]
+async fn schedule_tasks_crud_requires_login_and_validates() {
+    let mut s = TestServer::start().await;
+    s.call(
+        Method::POST,
+        "/api/auth/setup",
+        Some(json!({ "password": "correct horse battery" })),
+    )
+    .await;
+    let task = json!({
+        "name": "日报", "prompt": "总结新闻",
+        "schedule": { "kind": "interval", "everySecs": 3600 }
+    });
+    let (code, created) = s
+        .json(Method::POST, "/api/schedule/tasks", Some(task.clone()))
+        .await;
+    assert_eq!(code, StatusCode::CREATED);
+    assert_eq!(created["schedule"]["everySecs"], 3600);
+    assert_eq!(created["enabled"], true);
+    let id = created["id"].as_str().unwrap().to_owned();
+
+    let (code, list) = s.json(Method::GET, "/api/schedule/tasks", None).await;
+    assert_eq!((code, list.as_array().unwrap().len()), (StatusCode::OK, 1));
+
+    let (code, upd) = s
+        .json(
+            Method::PATCH,
+            &format!("/api/schedule/tasks/{id}"),
+            Some(json!({ "enabled": false, "name": "周报" })),
+        )
+        .await;
+    assert_eq!(
+        (code, upd["enabled"].clone(), upd["name"].clone()),
+        (StatusCode::OK, json!(false), json!("周报"))
+    );
+
+    let (code, fires) = s
+        .json(
+            Method::GET,
+            &format!("/api/schedule/tasks/{id}/fires"),
+            None,
+        )
+        .await;
+    assert_eq!((code, fires), (StatusCode::OK, json!([])));
+
+    let bad =
+        json!({ "name": "x", "prompt": "y", "schedule": { "kind": "interval", "everySecs": 5 } });
+    let (code, body) = s.json(Method::POST, "/api/schedule/tasks", Some(bad)).await;
+    assert_eq!(
+        (code, body),
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            json!({ "error": "invalid_interval" })
+        )
+    );
+
+    let (code, _) = s
+        .json(Method::DELETE, &format!("/api/schedule/tasks/{id}"), None)
+        .await;
+    assert_eq!(code, StatusCode::NO_CONTENT);
+    let (code, _) = s
+        .json(Method::GET, &format!("/api/schedule/tasks/{id}"), None)
+        .await;
+    assert_eq!(code, StatusCode::NOT_FOUND);
+
+    s.call(Method::POST, "/api/auth/logout", None).await;
+    let (code, _) = s.json(Method::GET, "/api/schedule/tasks", None).await;
+    assert_eq!(code, StatusCode::UNAUTHORIZED);
+}

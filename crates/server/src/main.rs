@@ -31,6 +31,7 @@ async fn main() -> anyhow::Result<()> {
             let skills =
                 sandbox.map(|sb| ownmind_skill::api::Skills::new(pool.clone(), sb, &builtin));
             let app = App::with_skills(pool, key, config.agent_cmd.clone(), tools, skills);
+            app.start_scheduler();
             serve(config, app).await
         }
         Some(other) => anyhow::bail!("未知命令：{other}（可用：migrate）"),
