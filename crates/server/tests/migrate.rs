@@ -18,6 +18,7 @@ const TABLES: &[&str] = &[
     "mem_entry_fts_idx",
     "settings_credential",
     "settings_preference",
+    "skill_installed",
 ];
 
 async fn tables(db: &std::path::Path) -> Vec<String> {
