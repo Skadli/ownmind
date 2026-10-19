@@ -29,6 +29,7 @@ pub(crate) struct Supervisor {
     settings: Settings,
     tools: Vec<Arc<dyn Tool>>,
     memory: Option<ownmind_memory::api::Memory>,
+    skills: Option<ownmind_skill::api::Skills>,
     /// 每个运行的中止信号，工具执行时监听。
     cancels: Mutex<HashMap<String, watch::Sender<bool>>>,
     next_id: AtomicU64,
@@ -47,6 +48,7 @@ impl Supervisor {
         settings: Settings,
         tools: Vec<Arc<dyn Tool>>,
         memory: Option<ownmind_memory::api::Memory>,
+        skills: Option<ownmind_skill::api::Skills>,
     ) -> Arc<Self> {
         assert!(!cmd.is_empty(), "agent 命令不能为空");
         let sup = Arc::new(Self {
@@ -54,6 +56,7 @@ impl Supervisor {
             settings,
             tools,
             memory,
+            skills,
             cancels: Mutex::new(HashMap::new()),
             next_id: AtomicU64::new(1),
             pending: Mutex::new(HashMap::new()),
@@ -230,6 +233,7 @@ impl Supervisor {
                     &self.conversations,
                     &self.settings,
                     self.memory.as_ref(),
+                    self.skills.as_ref(),
                     &p,
                 )
                 .await

@@ -1,5 +1,5 @@
 name: skill
 purpose: 预设技能与已装技能的目录、索引与 Git 安装
-depends_on: [kernel]
+depends_on: [kernel, sandbox]
 owns_tables: [skill_installed]
 prefix: skill_

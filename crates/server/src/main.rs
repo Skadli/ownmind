@@ -19,12 +19,18 @@ async fn main() -> anyhow::Result<()> {
         None => {
             let key = master_key(&config.data_dir)?;
             let token = ownmind_kernel::load_or_create_token(&config.sandbox_token_file)?;
-            let tools = config.sandbox_url.as_deref().map_or_else(Vec::new, |url| {
-                ownmind_runtime::api::sandbox_tool_set(ownmind_sandbox::api::Sandbox::new(
-                    url, &token,
-                ))
-            });
-            let app = App::with_tools(pool, key, config.agent_cmd.clone(), tools);
+            let sandbox = config
+                .sandbox_url
+                .as_deref()
+                .map(|url| ownmind_sandbox::api::Sandbox::new(url, &token));
+            let tools = sandbox
+                .clone()
+                .map_or_else(Vec::new, ownmind_runtime::api::sandbox_tool_set);
+            let builtin = std::env::var("OWNMIND_SKILLS_DIR")
+                .unwrap_or_else(|_| ownmind_skill::api::DEFAULT_BUILTIN_DIR.into());
+            let skills =
+                sandbox.map(|sb| ownmind_skill::api::Skills::new(pool.clone(), sb, &builtin));
+            let app = App::with_skills(pool, key, config.agent_cmd.clone(), tools, skills);
             serve(config, app).await
         }
         Some(other) => anyhow::bail!("未知命令：{other}（可用：migrate）"),
