@@ -68,25 +68,18 @@ impl Memory {
         }
         let now = now_ms();
         let base = base.trim();
-        // 单条原子语句：非空 base 要求内容仍匹配；空 base 只在没有行时插入。
-        let r = if base.is_empty() {
-            sqlx::query(
-                "INSERT INTO mem_core (id, content, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO NOTHING",
-            )
-            .bind(content)
-            .bind(now)
-            .execute(&self.db)
-            .await?
-        } else {
-            sqlx::query(
-                "UPDATE mem_core SET content = ?, updated_at = ? WHERE id = 1 AND content = ?",
-            )
-            .bind(content)
-            .bind(now)
-            .bind(base)
-            .execute(&self.db)
-            .await?
-        };
+        // 单条原子语句：行缺失时插入（仅空 base 合法）；否则仅当内容仍等于 base 才更新。
+        let r = sqlx::query(
+            "INSERT INTO mem_core (id, content, updated_at) \
+             SELECT 1, ?1, ?2 WHERE ?3 = '' OR EXISTS (SELECT 1 FROM mem_core WHERE id = 1) \
+             ON CONFLICT(id) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at \
+             WHERE mem_core.content = ?3",
+        )
+        .bind(content)
+        .bind(now)
+        .bind(base)
+        .execute(&self.db)
+        .await?;
         if r.rows_affected() == 0 {
             return Err(MemoryError::Conflict);
         }
@@ -196,6 +189,17 @@ mod tests {
             Err(MemoryError::CoreTooLong(_))
         ));
         assert_eq!(m.core().await.unwrap(), "喜欢喝咖啡");
+        // 清空后，空 base 仍可再次写入；过期 base 仍冲突。
+        m.set_core("喜欢喝咖啡", "").await.unwrap();
+        assert!(matches!(
+            m.set_core("喜欢喝咖啡", "x").await,
+            Err(MemoryError::Conflict)
+        ));
+        m.set_core("", "新内容").await.unwrap();
+        assert!(matches!(
+            m.set_core("", "y").await,
+            Err(MemoryError::Conflict)
+        ));
     }
 
     #[tokio::test]
