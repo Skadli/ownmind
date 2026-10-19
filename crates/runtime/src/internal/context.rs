@@ -3,6 +3,7 @@
 use ownmind_conversation::api::{Conversations, Message, Role};
 use ownmind_memory::api::Memory;
 use ownmind_settings::api::{Profile, Settings};
+use ownmind_skill::api::{SkillInfo, Skills};
 use serde_json::{Value, json};
 
 use crate::api::{CompactionRequest, ContextBuildParams, ContextBuildResult};
@@ -21,6 +22,7 @@ pub(crate) async fn build(
     conversations: &Conversations,
     settings: &Settings,
     memory: Option<&Memory>,
+    skills: Option<&Skills>,
     p: &ContextBuildParams,
 ) -> Result<ContextBuildResult, String> {
     let profile = settings.profile().await.map_err(|e| e.to_string())?;
@@ -47,6 +49,12 @@ pub(crate) async fn build(
     if let Some(m) = memory {
         let core = m.core().await.map_err(|e| e.to_string())?;
         system_prompt.push_str(&memory_layer(&core));
+    }
+    if let Some(sk) = skills {
+        // 沙盒暂时不可用时不影响聊天，只是这一轮没有技能索引。
+        if let Ok(list) = sk.index().await {
+            system_prompt.push_str(&skills_layer(&list));
+        }
     }
     if let Some(s) = summary {
         system_prompt.push_str("\n\n## 之前对话的摘要\n");
@@ -93,6 +101,21 @@ fn memory_layer(core: &str) -> String {
         core
     };
     format!("\n\n## 核心记忆（可用 memory 工具修改；更多细节用 memory search 检索）\n{body}")
+}
+
+/// 技能索引层（决策 005 第 3 层）：只放名字和一句描述，需要时读 SKILL.md。
+fn skills_layer(list: &[SkillInfo]) -> String {
+    if list.is_empty() {
+        return String::new();
+    }
+    let lines: Vec<String> = list
+        .iter()
+        .map(|s| format!("- {}：{}（{}）", s.name, s.description, s.path))
+        .collect();
+    format!(
+        "\n\n## 可用技能（任务相关时先用 read_file 或 exec cat 读对应 SKILL.md 再照做；主人给 Git 链接就用 skill 工具安装）\n{}",
+        lines.join("\n")
+    )
 }
 
 /// token 估算：最后一条带 usage 的回复，其 input+output 就是到它为止的上下文；之后的按字符估。
@@ -254,6 +277,18 @@ mod tests {
     fn estimates_cjk_heavier_than_ascii() {
         assert_eq!(estimate_chars("abcdefgh"), 2 + 4);
         assert_eq!(estimate_chars("你好"), 2 + 4);
+    }
+
+    #[test]
+    fn skills_layer_lists_name_desc_path() {
+        assert_eq!(skills_layer(&[]), "");
+        let s = skills_layer(&[SkillInfo {
+            name: "a".into(),
+            description: "甲".into(),
+            path: "/x/SKILL.md".into(),
+            source: "builtin".into(),
+        }]);
+        assert!(s.contains("- a：甲（/x/SKILL.md）"));
     }
 
     #[test]

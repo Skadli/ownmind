@@ -3,12 +3,14 @@
 mod chat;
 mod context;
 mod memory_tool;
+mod skill_tool;
 mod supervisor;
 mod tools;
 mod web;
 
 pub(crate) use chat::Chats;
 pub(crate) use memory_tool::memory_tools;
+pub(crate) use skill_tool::skill_tools;
 pub(crate) use supervisor::Supervisor;
 pub(crate) use tools::sandbox_tools;
 pub(crate) use web::web_tools;

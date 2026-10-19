@@ -36,6 +36,8 @@ RUN apt-get update \
  && useradd --uid 10001 --create-home --home-dir /home/sandbox sandbox \
  && mkdir -p /workspace && chown sandbox /workspace
 COPY --from=server /usr/local/bin/ownmind-sandboxd /usr/local/bin/ownmind-sandboxd
+# 预设技能：随镜像只读同步，升级镜像即更新；已装技能在 /workspace/.skills 不受影响。
+COPY agent/skills/builtin /opt/ownmind/skills/builtin
 ENV OWNMIND_SANDBOX_ADDR=0.0.0.0:8788 \
     OWNMIND_SANDBOX_WORKDIR=/workspace \
     OWNMIND_SANDBOX_TOKEN_FILE=/secret/sandbox.token

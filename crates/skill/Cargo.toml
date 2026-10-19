@@ -7,6 +7,14 @@ publish = false
 
 [dependencies]
 ownmind-kernel = { path = "../kernel" }
+ownmind-sandbox = { path = "../sandbox" }
+serde.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true

@@ -1251,6 +1251,12 @@ name = "ownmind-skill"
 version = "0.0.0"
 dependencies = [
  "ownmind-kernel",
+ "ownmind-sandbox",
+ "serde",
+ "sqlx",
+ "tempfile",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]

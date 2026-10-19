@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc};
 use ts_rs::TS;
 
-use crate::internal::{Chats, Supervisor, memory_tools, sandbox_tools, web_tools};
+use crate::internal::{Chats, Supervisor, memory_tools, sandbox_tools, skill_tools, web_tools};
 
 /// 协议版本：握手时双方必须一致。
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -408,6 +408,11 @@ pub fn memory_tool_set(memory: ownmind_memory::api::Memory) -> Vec<Arc<dyn Tool>
     memory_tools(memory)
 }
 
+/// 技能工具（skill：list/install/remove），供 server 注册。
+pub fn skill_tool_set(skills: ownmind_skill::api::Skills) -> Vec<Arc<dyn Tool>> {
+    skill_tools(skills)
+}
+
 /// 联网工具的可调参数；生产用 `WebOptions::default()`。
 #[derive(Debug, Clone, Default)]
 pub struct WebOptions {
@@ -442,19 +447,27 @@ impl Runtime {
         settings: Settings,
         tools: Vec<Arc<dyn Tool>>,
     ) -> Self {
-        Self::spawn_full(cmd, conversations, settings, tools, None)
+        Self::spawn_full(cmd, conversations, settings, tools, None, None)
     }
 
-    /// 同 spawn_with_tools，并把核心记忆放进每次的上下文。
+    /// 同 spawn_with_tools，并把核心记忆与技能索引放进每次的上下文。
     pub fn spawn_full(
         cmd: Vec<String>,
         conversations: Conversations,
         settings: Settings,
         tools: Vec<Arc<dyn Tool>>,
         memory: Option<ownmind_memory::api::Memory>,
+        skills: Option<ownmind_skill::api::Skills>,
     ) -> Self {
         Self {
-            sup: Supervisor::spawn(cmd, conversations.clone(), settings.clone(), tools, memory),
+            sup: Supervisor::spawn(
+                cmd,
+                conversations.clone(),
+                settings.clone(),
+                tools,
+                memory,
+                skills,
+            ),
             settings,
             chats: Arc::new(Chats::new(conversations)),
         }

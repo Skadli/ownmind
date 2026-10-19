@@ -75,19 +75,34 @@ impl App {
         db: SqlitePool,
         key: MasterKey,
         agent_cmd: Vec<String>,
+        tools: Vec<std::sync::Arc<dyn ownmind_runtime::api::Tool>>,
+    ) -> Self {
+        Self::with_skills(db, key, agent_cmd, tools, None)
+    }
+
+    /// 同 with_tools，并启用技能（索引进上下文 + skill 工具）。
+    pub fn with_skills(
+        db: SqlitePool,
+        key: MasterKey,
+        agent_cmd: Vec<String>,
         mut tools: Vec<std::sync::Arc<dyn ownmind_runtime::api::Tool>>,
+        skills: Option<ownmind_skill::api::Skills>,
     ) -> Self {
         let conversations = Conversations::new(db.clone());
         let settings = Settings::new(db.clone(), key.clone());
         tools.extend(ownmind_runtime::api::web_tool_set(settings.clone()));
         let memory = ownmind_memory::api::Memory::new(db.clone());
         tools.extend(ownmind_runtime::api::memory_tool_set(memory.clone()));
+        if let Some(s) = &skills {
+            tools.extend(ownmind_runtime::api::skill_tool_set(s.clone()));
+        }
         let runtime = Runtime::spawn_full(
             agent_cmd,
             conversations.clone(),
             settings.clone(),
             tools,
             Some(memory),
+            skills,
         );
         Self {
             auth: Auth::new(db, key),
@@ -122,6 +137,7 @@ pub async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
         &ownmind_conversation::api::MIGRATOR,
         &ownmind_settings::api::MIGRATOR,
         &ownmind_memory::api::MIGRATOR,
+        &ownmind_skill::api::MIGRATOR,
     ];
     let mut migrations: Vec<_> = modules.iter().flat_map(|m| m.iter().cloned()).collect();
     migrations.sort_by_key(|m| m.version);
