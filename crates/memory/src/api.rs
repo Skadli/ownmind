@@ -67,22 +67,29 @@ impl Memory {
             return Err(MemoryError::CoreTooLong(t));
         }
         let now = now_ms();
-        let mut tx = self.db.begin().await?;
-        let cur: Option<(String,)> = sqlx::query_as("SELECT content FROM mem_core WHERE id = 1")
-            .fetch_optional(&mut *tx)
-            .await?;
-        if cur.map(|r| r.0).unwrap_or_default() != base.trim() {
+        let base = base.trim();
+        // 单条原子语句：非空 base 要求内容仍匹配；空 base 只在没有行时插入。
+        let r = if base.is_empty() {
+            sqlx::query(
+                "INSERT INTO mem_core (id, content, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO NOTHING",
+            )
+            .bind(content)
+            .bind(now)
+            .execute(&self.db)
+            .await?
+        } else {
+            sqlx::query(
+                "UPDATE mem_core SET content = ?, updated_at = ? WHERE id = 1 AND content = ?",
+            )
+            .bind(content)
+            .bind(now)
+            .bind(base)
+            .execute(&self.db)
+            .await?
+        };
+        if r.rows_affected() == 0 {
             return Err(MemoryError::Conflict);
         }
-        sqlx::query(
-            "INSERT INTO mem_core (id, content, updated_at) VALUES (1, ?, ?) \
-             ON CONFLICT(id) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
-        )
-        .bind(content)
-        .bind(now)
-        .execute(&mut *tx)
-        .await?;
-        tx.commit().await?;
         Ok(())
     }
 
