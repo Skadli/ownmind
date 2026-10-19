@@ -1,5 +1,5 @@
 name: memory
 purpose: 主人的长期记忆：核心记忆与可检索条目，由 agent 读写
 depends_on: [kernel]
-owns_tables: [mem_core, mem_entry]
+owns_tables: [mem_core, mem_entry, mem_entry_fts]
 prefix: mem_

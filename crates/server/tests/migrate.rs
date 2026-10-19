@@ -9,6 +9,13 @@ const TABLES: &[&str] = &[
     "conv_compaction",
     "conv_conversation",
     "conv_message",
+    "mem_core",
+    "mem_entry",
+    "mem_entry_fts",
+    "mem_entry_fts_config",
+    "mem_entry_fts_data",
+    "mem_entry_fts_docsize",
+    "mem_entry_fts_idx",
     "settings_credential",
     "settings_preference",
 ];
