@@ -16,6 +16,8 @@ const TABLES: &[&str] = &[
     "mem_entry_fts_data",
     "mem_entry_fts_docsize",
     "mem_entry_fts_idx",
+    "sched_fire",
+    "sched_task",
     "settings_credential",
     "settings_preference",
     "skill_installed",

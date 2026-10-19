@@ -62,6 +62,7 @@ pub struct App {
     pub conversations: Conversations,
     pub settings: Settings,
     pub runtime: Runtime,
+    pub schedule: ownmind_schedule::api::Scheduler,
 }
 
 impl App {
@@ -105,10 +106,78 @@ impl App {
             skills,
         );
         Self {
+            schedule: ownmind_schedule::api::Scheduler::new(db.clone()),
             auth: Auth::new(db, key),
             conversations,
             settings,
             runtime,
+        }
+    }
+}
+
+impl App {
+    /// 启动调度器：每 15 秒认领到期任务；每个到期任务新开一个会话并把 prompt 发给 agent。
+    /// 需要在 tokio 运行时里调用；测试默认不启动。
+    pub fn start_scheduler(&self) {
+        let mut due = self.schedule.subscribe();
+        let sched = self.schedule.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(15));
+            loop {
+                tick.tick().await;
+                if let Err(e) = sched.tick().await {
+                    tracing::error!(error = %e, "scheduler tick failed");
+                }
+            }
+        });
+        let app = self.clone_for_scheduler();
+        tokio::spawn(async move {
+            while let Some(ev) = due.recv().await {
+                app.run_due(ev.task).await;
+            }
+        });
+    }
+
+    fn clone_for_scheduler(&self) -> SchedulerCtx {
+        SchedulerCtx {
+            conversations: self.conversations.clone(),
+            runtime: self.runtime.clone(),
+            schedule: self.schedule.clone(),
+        }
+    }
+}
+
+struct SchedulerCtx {
+    conversations: Conversations,
+    runtime: Runtime,
+    schedule: ownmind_schedule::api::Scheduler,
+}
+
+impl SchedulerCtx {
+    async fn run_due(&self, task: ownmind_schedule::api::Task) {
+        let title = format!("定时：{}", task.name);
+        let result = async {
+            let conv = self
+                .conversations
+                .create(Some(&title))
+                .await
+                .map_err(|e| e.to_string())?;
+            self.runtime
+                .send(&conv.id, &task.prompt)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok::<_, String>(conv.id)
+        }
+        .await;
+        let rec = match &result {
+            Ok(id) => self.schedule.record_fire(&task.id, Some(id), None).await,
+            Err(e) => {
+                tracing::warn!(task = %task.id, error = %e, "scheduled run failed to start");
+                self.schedule.record_fire(&task.id, None, Some(e)).await
+            }
+        };
+        if let Err(e) = rec {
+            tracing::error!(error = %e, "record fire failed");
         }
     }
 }
@@ -138,6 +207,7 @@ pub async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
         &ownmind_settings::api::MIGRATOR,
         &ownmind_memory::api::MIGRATOR,
         &ownmind_skill::api::MIGRATOR,
+        &ownmind_schedule::api::MIGRATOR,
     ];
     let mut migrations: Vec<_> = modules.iter().flat_map(|m| m.iter().cloned()).collect();
     migrations.sort_by_key(|m| m.version);

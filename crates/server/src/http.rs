@@ -14,6 +14,7 @@ use axum_extra::extract::cookie::{Cookie, SameSite};
 use ownmind_auth::api::{AuthError, SESSION_TTL_MS};
 use ownmind_conversation::api::{Conversation, ConversationError, Message};
 use ownmind_runtime::api::{ChatEvent, RuntimeError};
+use ownmind_schedule::api::{Fire, ScheduleError, Task, TaskInput, TaskPatch};
 use ownmind_settings::api::{
     Credential, CredentialInput, DefaultModel, Profile, SearchConfig, SearchInput, SettingsError,
     SystemPrefs,
@@ -62,6 +63,12 @@ pub fn router(app: App, web_dir: &Path) -> Router {
             "/settings/search",
             get(get_search).put(put_search).delete(delete_search),
         )
+        .route("/schedule/tasks", get(list_tasks).post(create_task))
+        .route(
+            "/schedule/tasks/{id}",
+            get(get_task).patch(update_task).delete(delete_task),
+        )
+        .route("/schedule/tasks/{id}/fires", get(list_fires))
         .route("/settings/profile", get(get_profile).put(put_profile))
         .route("/settings/system", get(get_system).put(put_system))
         .route(
@@ -135,6 +142,19 @@ impl From<SettingsError> for ApiError {
             SettingsError::NoDefaultModel => Self(StatusCode::CONFLICT, "no_default_model"),
             SettingsError::Secret(e) => internal(e),
             SettingsError::Db(e) => internal(e),
+        }
+    }
+}
+
+impl From<ScheduleError> for ApiError {
+    fn from(e: ScheduleError) -> Self {
+        let unprocessable = |code| Self(StatusCode::UNPROCESSABLE_ENTITY, code);
+        match e {
+            ScheduleError::BadName => unprocessable("invalid_name"),
+            ScheduleError::BadPrompt => unprocessable("invalid_prompt"),
+            ScheduleError::BadInterval => unprocessable("invalid_interval"),
+            ScheduleError::NotFound => Self(StatusCode::NOT_FOUND, "not_found"),
+            ScheduleError::Db(e) => internal(e),
         }
     }
 }
@@ -529,4 +549,52 @@ async fn put_search(
 async fn delete_search(_: Owner, State(app): State<App>) -> Result<StatusCode, ApiError> {
     app.settings.clear_search_config().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------- 定时任务 ----------
+
+async fn list_tasks(_: Owner, State(app): State<App>) -> Result<Json<Vec<Task>>, ApiError> {
+    Ok(Json(app.schedule.list().await?))
+}
+
+async fn create_task(
+    _: Owner,
+    State(app): State<App>,
+    Json(body): Json<TaskInput>,
+) -> Result<(StatusCode, Json<Task>), ApiError> {
+    Ok((StatusCode::CREATED, Json(app.schedule.create(body).await?)))
+}
+
+async fn get_task(
+    _: Owner,
+    State(app): State<App>,
+    UrlPath(id): UrlPath<String>,
+) -> Result<Json<Task>, ApiError> {
+    Ok(Json(app.schedule.get(&id).await?))
+}
+
+async fn update_task(
+    _: Owner,
+    State(app): State<App>,
+    UrlPath(id): UrlPath<String>,
+    Json(body): Json<TaskPatch>,
+) -> Result<Json<Task>, ApiError> {
+    Ok(Json(app.schedule.update(&id, body).await?))
+}
+
+async fn delete_task(
+    _: Owner,
+    State(app): State<App>,
+    UrlPath(id): UrlPath<String>,
+) -> Result<StatusCode, ApiError> {
+    app.schedule.delete(&id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_fires(
+    _: Owner,
+    State(app): State<App>,
+    UrlPath(id): UrlPath<String>,
+) -> Result<Json<Vec<Fire>>, ApiError> {
+    Ok(Json(app.schedule.fires(&id, 50).await?))
 }
