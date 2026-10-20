@@ -10,6 +10,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ApiError, api, type Conversation, type Message } from "../api/client";
 import { errorText, t } from "../i18n";
+import { argSummary } from "./toolSummary";
 
 type Props = {
   conversation: Conversation;
@@ -19,7 +20,12 @@ type Props = {
 };
 
 /** 正在生成的回复。 */
-type Draft = { text: string; thinking: boolean; tool?: string };
+type Draft = {
+  text: string;
+  thinking: boolean;
+  tool?: string;
+  summary?: string;
+};
 
 export function ChatPage({
   conversation,
@@ -102,7 +108,12 @@ export function ChatPage({
             setDraft({ text: "", thinking: true });
             break;
           case "tool_start":
-            setDraft({ text: "", thinking: true, tool: ev.name });
+            setDraft({
+              text: "",
+              thinking: true,
+              tool: ev.name,
+              summary: argSummary(ev.arguments),
+            });
             break;
           case "done":
             setMessages((m) => [...m, ev.message]);
@@ -165,7 +176,8 @@ export function ChatPage({
           (draft.thinking ? (
             <p className="text-sm text-neutral-400">
               {draft.tool
-                ? t("chat.tool").replace("{name}", draft.tool)
+                ? t("chat.tool").replace("{name}", draft.tool) +
+                  (draft.summary ? ` · ${draft.summary}` : "")
                 : t("chat.thinking")}
             </p>
           ) : (
@@ -257,8 +269,7 @@ function toolInfo(m: Message, calls: ReturnType<typeof toolCalls>): ToolInfo {
     isError?: boolean;
   };
   const call = body.toolCallId ? calls.get(body.toolCallId) : undefined;
-  const arg = call?.args.command ?? call?.args.path ?? "";
-  const summary = String(arg).replace(/\s+/g, " ").slice(0, 80);
+  const summary = argSummary(call?.args);
   return {
     name: call?.name || body.toolName || "tool",
     summary,
