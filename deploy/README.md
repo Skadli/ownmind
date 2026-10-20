@@ -2,6 +2,14 @@
 
 前提：一台装了 Docker（含 compose 插件）的 Linux 服务器，一个指向它的域名，80/443 端口开放。
 
+一键安装（把域名换成你的）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Skadli/ownmind/main/deploy/install.sh | bash -s -- ownmind.example.com
+```
+
+或手动：
+
 ```bash
 git clone https://github.com/Skadli/ownmind.git
 cd ownmind/deploy
