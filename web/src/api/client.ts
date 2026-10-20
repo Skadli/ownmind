@@ -1,3 +1,4 @@
+import type { Fire, Task, TaskDraft } from "../pages/schedule";
 import type { ChatEvent } from "./generated/chat";
 import type { Conversation, Message } from "./generated/conversation";
 import type {
@@ -104,6 +105,13 @@ export const api = {
     request<SystemPrefs>("PUT", "/settings/system", p),
   getDefaultModel: () =>
     request<DefaultModel | null>("GET", "/settings/default-model"),
+  listTasks: () => request<Task[]>("GET", "/schedule/tasks"),
+  createTask: (t: TaskDraft) => request<Task>("POST", "/schedule/tasks", t),
+  updateTask: (id: string, t: Partial<TaskDraft> & { enabled?: boolean }) =>
+    request<Task>("PATCH", `/schedule/tasks/${id}`, t),
+  deleteTask: (id: string) => request<void>("DELETE", `/schedule/tasks/${id}`),
+  listFires: (id: string) =>
+    request<Fire[]>("GET", `/schedule/tasks/${id}/fires`),
   setDefaultModel: (model: DefaultModel) =>
     request<void>("PUT", "/settings/default-model", model),
 };

@@ -9,6 +9,7 @@ import {
 import { errorText, type MessageKey, setLanguage, t } from "../i18n";
 import { AccountPage } from "./AccountPage";
 import { SecuritySection } from "./SecuritySection";
+import { TasksSection } from "./TasksSection";
 
 const REPO = "https://github.com/Skadli/ownmind";
 
@@ -87,12 +88,7 @@ export function SettingsPage({ onBack, onLoggedOut, onLanguageChange }: Props) {
       </nav>
       <div className="min-w-0 flex-1 space-y-6">
         {section === "profile" && <ProfileSection onLoggedOut={onLoggedOut} />}
-        {section === "tasks" && (
-          <section className={card}>
-            <h2 className="text-lg font-semibold">{t("settings.tasks")}</h2>
-            <p className="text-neutral-500">{t("settings.tasksSoon")}</p>
-          </section>
-        )}
+        {section === "tasks" && <TasksSection onLoggedOut={onLoggedOut} />}
         {section === "account" && (
           <AccountPage onUnauthenticated={onLoggedOut} />
         )}
