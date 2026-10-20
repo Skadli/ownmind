@@ -164,7 +164,7 @@ function NewTask({
     name: string;
     prompt: string;
     schedule: Schedule;
-  }) => Promise<void>;
+  }) => Promise<boolean>;
   onInvalid: (msg: string) => void;
 }) {
   const [name, setName] = useState("");
