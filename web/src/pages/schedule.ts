@@ -38,7 +38,7 @@ export function intervalSecs(
   return amount * UNIT_SECS[unit];
 }
 
-/** 把秒数拆成最大的整除单位，用于编辑回填。 */
+/** 把秒数拆成最大的整除单位；无法整除分钟时会四舍五入，可能改变原间隔。 */
 export function splitInterval(secs: number): {
   amount: number;
   unit: IntervalUnit;

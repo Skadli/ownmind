@@ -21,7 +21,8 @@ function fmt(ms: number | null): string {
 
 function describe(s: Schedule): string {
   if (s.kind === "once") return `${t("tasks.onceText")} · ${fmt(s.runAt)}`;
-  const mins = Math.round(s.everySecs / 60);
+  if (s.everySecs % 60 !== 0) return `${t("tasks.everyText")} ${s.everySecs} s`;
+  const mins = s.everySecs / 60;
   if (mins % 1440 === 0)
     return `${t("tasks.everyText")} ${mins / 1440} ${t("tasks.days")}`;
   if (mins % 60 === 0)
@@ -50,13 +51,15 @@ export function TasksSection({ onLoggedOut }: { onLoggedOut: () => void }) {
     reload();
   }, [reload]);
 
-  const run = async (job: () => Promise<unknown>) => {
+  const run = async (job: () => Promise<unknown>): Promise<boolean> => {
     setError(null);
     try {
       await job();
       await reload();
+      return true;
     } catch (err) {
       handle(err);
+      return false;
     }
   };
   const showFires = async (id: string) => {
@@ -184,9 +187,12 @@ function NewTask({
     if (!name.trim() || !prompt.trim() || !schedule) {
       return onInvalid(t("tasks.badInput"));
     }
-    await onCreate({ name: name.trim(), prompt: prompt.trim(), schedule });
-    setName("");
-    setPrompt("");
+    if (
+      await onCreate({ name: name.trim(), prompt: prompt.trim(), schedule })
+    ) {
+      setName("");
+      setPrompt("");
+    }
   };
 
   return (
