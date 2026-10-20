@@ -22,6 +22,8 @@ export const zh = {
   "error.unauthenticated": "登录已过期，请重新登录。",
   "error.invalid_title": "标题不能为空，且不超过 200 个字符。",
   "error.not_found": "找不到这个会话。",
+  "error.memory_entry_not_found": "这条记忆已不存在。",
+  "error.skill_not_found": "这个技能已不存在。",
   "error.internal": "出错了，请稍后再试。",
   "nav.settings": "设置",
   "nav.back": "返回",
@@ -153,4 +155,24 @@ export const zh = {
   "error.invalid_profile":
     "名字与称呼不超过 100 个字符，简介不超过 2000 个字符。",
   "error.invalid_timezone": "时区不合法。",
+  "settings.memory": "记忆与技能",
+  "memory.hint":
+    "核心记忆每次对话都会带上（上限约 2000 token）；长期条目由 Ownmind 按需检索。",
+  "memory.core": "核心记忆",
+  "memory.save": "保存",
+  "memory.entries": "长期记忆条目",
+  "memory.entriesEmpty": "还没有长期记忆条目。",
+  "memory.addPlaceholder": "新增一条记忆",
+  "memory.add": "添加",
+  "memory.delete": "删除",
+  "skills.title": "已有技能",
+  "skills.empty": "没有可用技能（沙盒未启用或还没有技能）。",
+  "skills.builtin": "预设",
+  "skills.installed": "已安装",
+  "skills.remove": "卸载",
+  "error.core_too_long": "核心记忆太长（上限约 2000 token），请精简。",
+  "error.invalid_entry": "条目不能为空，且不超过 2000 字。",
+  "error.memory_conflict":
+    "核心记忆刚被别的会话改过，已重新载入，请合并后再保存。",
+  "error.invalid_skill": "技能名不合法。",
 };

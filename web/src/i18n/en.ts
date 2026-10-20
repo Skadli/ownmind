@@ -25,6 +25,8 @@ export const en: Messages = {
   "error.unauthenticated": "Your session expired. Please sign in again.",
   "error.invalid_title": "Title can't be empty or longer than 200 characters.",
   "error.not_found": "That conversation no longer exists.",
+  "error.memory_entry_not_found": "That memory entry no longer exists.",
+  "error.skill_not_found": "That skill no longer exists.",
   "error.internal": "Something went wrong. Please try again.",
   "nav.settings": "Settings",
   "nav.back": "Back",
@@ -166,4 +168,24 @@ export const en: Messages = {
   "error.invalid_profile":
     "Name and nickname up to 100 characters, bio up to 2000.",
   "error.invalid_timezone": "Invalid time zone.",
+  "settings.memory": "Memory & skills",
+  "memory.hint":
+    "Core memory is sent with every chat (about 2000 tokens max); long-term entries are searched on demand.",
+  "memory.core": "Core memory",
+  "memory.save": "Save",
+  "memory.entries": "Long-term entries",
+  "memory.entriesEmpty": "No long-term entries yet.",
+  "memory.addPlaceholder": "Add a memory",
+  "memory.add": "Add",
+  "memory.delete": "Delete",
+  "skills.title": "Skills",
+  "skills.empty": "No skills available (sandbox disabled or none yet).",
+  "skills.builtin": "Built-in",
+  "skills.installed": "Installed",
+  "skills.remove": "Remove",
+  "error.core_too_long": "Core memory is too long (about 2000 tokens max).",
+  "error.invalid_entry": "Entry can't be empty or longer than 2000 characters.",
+  "error.memory_conflict":
+    "Core memory was just changed elsewhere and has been reloaded. Merge and save again.",
+  "error.invalid_skill": "Invalid skill name.",
 };

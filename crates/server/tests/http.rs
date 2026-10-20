@@ -557,3 +557,62 @@ async fn schedule_tasks_crud_requires_login_and_validates() {
     let (code, _) = s.json(Method::GET, "/api/schedule/tasks", None).await;
     assert_eq!(code, StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn memory_management_over_http() {
+    let mut s = TestServer::start().await;
+    let (code, _) = s.json(Method::GET, "/api/memory", None).await;
+    assert_eq!(code, StatusCode::UNAUTHORIZED);
+    s.call(
+        Method::POST,
+        "/api/auth/setup",
+        Some(json!({ "password": "correct horse battery" })),
+    )
+    .await;
+    let (code, m) = s.json(Method::GET, "/api/memory", None).await;
+    assert_eq!((code, m["core"].clone()), (StatusCode::OK, json!("")));
+
+    let (code, _) = s
+        .json(
+            Method::PUT,
+            "/api/memory/core",
+            Some(json!({ "base": "", "content": "喜欢咖啡" })),
+        )
+        .await;
+    assert_eq!(code, StatusCode::NO_CONTENT);
+    // 基线过期 → 409
+    let (code, body) = s
+        .json(
+            Method::PUT,
+            "/api/memory/core",
+            Some(json!({ "base": "", "content": "别的" })),
+        )
+        .await;
+    assert_eq!(
+        (code, body["error"].clone()),
+        (StatusCode::CONFLICT, json!("memory_conflict"))
+    );
+
+    let (code, e) = s
+        .json(
+            Method::POST,
+            "/api/memory/entries",
+            Some(json!({ "content": "生日 3 月 1 日" })),
+        )
+        .await;
+    assert_eq!(code, StatusCode::CREATED);
+    let id = e["id"].as_str().unwrap().to_owned();
+    let (_, m) = s.json(Method::GET, "/api/memory", None).await;
+    assert_eq!(m["entries"].as_array().unwrap().len(), 1);
+    let (code, _) = s
+        .json(Method::DELETE, &format!("/api/memory/entries/{id}"), None)
+        .await;
+    assert_eq!(code, StatusCode::NO_CONTENT);
+    let (code, _) = s
+        .json(Method::DELETE, &format!("/api/memory/entries/{id}"), None)
+        .await;
+    assert_eq!(code, StatusCode::NOT_FOUND);
+
+    let (code, sk) = s.json(Method::GET, "/api/skills", None).await;
+    assert_eq!((code, sk), (StatusCode::OK, json!([])));
+}

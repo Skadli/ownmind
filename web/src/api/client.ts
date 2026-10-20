@@ -60,6 +60,15 @@ async function request<T>(
   return res.status === 204 ? (undefined as T) : res.json();
 }
 
+export type MemoryEntry = { id: string; content: string; createdAt: number };
+export type MemoryView = { core: string; entries: MemoryEntry[] };
+export type SkillInfo = {
+  name: string;
+  description: string;
+  path: string;
+  source: "builtin" | "installed";
+};
+
 export const api = {
   status: () =>
     request<{ isSetUp: boolean; isLoggedIn: boolean }>("GET", "/auth/status"),
@@ -112,6 +121,16 @@ export const api = {
   deleteTask: (id: string) => request<void>("DELETE", `/schedule/tasks/${id}`),
   listFires: (id: string) =>
     request<Fire[]>("GET", `/schedule/tasks/${id}/fires`),
+  getMemory: () => request<MemoryView>("GET", "/memory"),
+  setMemoryCore: (base: string, content: string) =>
+    request<void>("PUT", "/memory/core", { base, content }),
+  addMemoryEntry: (content: string) =>
+    request<MemoryEntry>("POST", "/memory/entries", { content }),
+  deleteMemoryEntry: (id: string) =>
+    request<void>("DELETE", `/memory/entries/${id}`),
+  listSkills: () => request<SkillInfo[]>("GET", "/skills"),
+  removeSkill: (name: string) =>
+    request<void>("DELETE", `/skills/${encodeURIComponent(name)}`),
   setDefaultModel: (model: DefaultModel) =>
     request<void>("PUT", "/settings/default-model", model),
 };

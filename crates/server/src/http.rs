@@ -13,12 +13,14 @@ use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use ownmind_auth::api::{AuthError, SESSION_TTL_MS};
 use ownmind_conversation::api::{Conversation, ConversationError, Message};
+use ownmind_memory::api::{Entry, MemoryError};
 use ownmind_runtime::api::{ChatEvent, RuntimeError};
 use ownmind_schedule::api::{Fire, ScheduleError, Task, TaskInput, TaskPatch};
 use ownmind_settings::api::{
     Credential, CredentialInput, DefaultModel, Profile, SearchConfig, SearchInput, SettingsError,
     SystemPrefs,
 };
+use ownmind_skill::api::{SkillError, SkillInfo};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tower_http::services::{ServeDir, ServeFile};
@@ -69,6 +71,15 @@ pub fn router(app: App, web_dir: &Path) -> Router {
             get(get_task).patch(update_task).delete(delete_task),
         )
         .route("/schedule/tasks/{id}/fires", get(list_fires))
+        .route("/memory", get(get_memory))
+        .route("/memory/core", axum::routing::put(put_memory_core))
+        .route("/memory/entries", post(add_memory_entry))
+        .route(
+            "/memory/entries/{id}",
+            axum::routing::delete(delete_memory_entry),
+        )
+        .route("/skills", get(list_skills))
+        .route("/skills/{name}", axum::routing::delete(remove_skill))
         .route("/settings/profile", get(get_profile).put(put_profile))
         .route("/settings/system", get(get_system).put(put_system))
         .route(
@@ -155,6 +166,28 @@ impl From<ScheduleError> for ApiError {
             ScheduleError::BadInterval => unprocessable("invalid_interval"),
             ScheduleError::NotFound => Self(StatusCode::NOT_FOUND, "not_found"),
             ScheduleError::Db(e) => internal(e),
+        }
+    }
+}
+
+impl From<MemoryError> for ApiError {
+    fn from(e: MemoryError) -> Self {
+        match e {
+            MemoryError::CoreTooLong(_) => Self(StatusCode::UNPROCESSABLE_ENTITY, "core_too_long"),
+            MemoryError::BadEntry => Self(StatusCode::UNPROCESSABLE_ENTITY, "invalid_entry"),
+            MemoryError::Conflict => Self(StatusCode::CONFLICT, "memory_conflict"),
+            MemoryError::Db(e) => internal(e),
+        }
+    }
+}
+
+impl From<SkillError> for ApiError {
+    fn from(e: SkillError) -> Self {
+        match e {
+            SkillError::Invalid(_) => Self(StatusCode::UNPROCESSABLE_ENTITY, "invalid_skill"),
+            SkillError::Install(m) => internal(m),
+            SkillError::Sandbox(e) => internal(e),
+            SkillError::Db(e) => internal(e),
         }
     }
 }
@@ -552,6 +585,86 @@ async fn delete_search(_: Owner, State(app): State<App>) -> Result<StatusCode, A
 }
 
 // ---------- 定时任务 ----------
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MemoryView {
+    core: String,
+    entries: Vec<Entry>,
+}
+
+#[derive(Deserialize)]
+struct CoreInput {
+    base: String,
+    content: String,
+}
+
+#[derive(Deserialize)]
+struct EntryInput {
+    content: String,
+}
+
+async fn get_memory(_: Owner, State(app): State<App>) -> Result<Json<MemoryView>, ApiError> {
+    Ok(Json(MemoryView {
+        core: app.memory.core().await?,
+        entries: app.memory.recent(50).await?,
+    }))
+}
+
+async fn put_memory_core(
+    _: Owner,
+    State(app): State<App>,
+    Json(body): Json<CoreInput>,
+) -> Result<StatusCode, ApiError> {
+    app.memory.set_core(&body.base, &body.content).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn add_memory_entry(
+    _: Owner,
+    State(app): State<App>,
+    Json(body): Json<EntryInput>,
+) -> Result<(StatusCode, Json<Entry>), ApiError> {
+    Ok((
+        StatusCode::CREATED,
+        Json(app.memory.add(&body.content).await?),
+    ))
+}
+
+async fn delete_memory_entry(
+    _: Owner,
+    State(app): State<App>,
+    UrlPath(id): UrlPath<String>,
+) -> Result<StatusCode, ApiError> {
+    if app.memory.delete(&id).await? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError(StatusCode::NOT_FOUND, "memory_entry_not_found"))
+    }
+}
+
+async fn list_skills(_: Owner, State(app): State<App>) -> Result<Json<Vec<SkillInfo>>, ApiError> {
+    match &app.skills {
+        Some(s) => Ok(Json(s.index().await?)),
+        None => Ok(Json(Vec::new())),
+    }
+}
+
+async fn remove_skill(
+    _: Owner,
+    State(app): State<App>,
+    UrlPath(name): UrlPath<String>,
+) -> Result<StatusCode, ApiError> {
+    let removed = match &app.skills {
+        Some(s) => s.remove(&name).await?,
+        None => false,
+    };
+    if removed {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError(StatusCode::NOT_FOUND, "skill_not_found"))
+    }
+}
 
 async fn list_tasks(_: Owner, State(app): State<App>) -> Result<Json<Vec<Task>>, ApiError> {
     Ok(Json(app.schedule.list().await?))

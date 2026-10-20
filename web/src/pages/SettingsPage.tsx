@@ -8,6 +8,7 @@ import {
 } from "../api/client";
 import { errorText, type MessageKey, setLanguage, t } from "../i18n";
 import { AccountPage } from "./AccountPage";
+import { MemorySection } from "./MemorySection";
 import { SecuritySection } from "./SecuritySection";
 import { TasksSection } from "./TasksSection";
 
@@ -16,6 +17,7 @@ const REPO = "https://github.com/Skadli/ownmind";
 const SECTIONS = [
   "profile",
   "tasks",
+  "memory",
   "account",
   "system",
   "security",
@@ -27,6 +29,7 @@ type Section = (typeof SECTIONS)[number];
 const sectionTitle: Record<Section, MessageKey> = {
   profile: "settings.profile",
   tasks: "settings.tasks",
+  memory: "settings.memory",
   account: "account.title",
   system: "settings.system",
   security: "settings.security",
@@ -88,6 +91,7 @@ export function SettingsPage({ onBack, onLoggedOut, onLanguageChange }: Props) {
       </nav>
       <div className="min-w-0 flex-1 space-y-6">
         {section === "profile" && <ProfileSection onLoggedOut={onLoggedOut} />}
+        {section === "memory" && <MemorySection onLoggedOut={onLoggedOut} />}
         {section === "tasks" && <TasksSection onLoggedOut={onLoggedOut} />}
         {section === "account" && (
           <AccountPage onUnauthenticated={onLoggedOut} />
