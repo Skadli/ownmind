@@ -63,6 +63,8 @@ pub struct App {
     pub settings: Settings,
     pub runtime: Runtime,
     pub schedule: ownmind_schedule::api::Scheduler,
+    pub memory: ownmind_memory::api::Memory,
+    pub skills: Option<ownmind_skill::api::Skills>,
 }
 
 impl App {
@@ -102,8 +104,8 @@ impl App {
             conversations.clone(),
             settings.clone(),
             tools,
-            Some(memory),
-            skills,
+            Some(memory.clone()),
+            skills.clone(),
         );
         Self {
             schedule: ownmind_schedule::api::Scheduler::new(db.clone()),
@@ -111,6 +113,8 @@ impl App {
             conversations,
             settings,
             runtime,
+            memory,
+            skills,
         }
     }
 }
