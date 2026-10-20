@@ -639,7 +639,7 @@ async fn delete_memory_entry(
     if app.memory.delete(&id).await? {
         Ok(StatusCode::NO_CONTENT)
     } else {
-        Err(ApiError(StatusCode::NOT_FOUND, "not_found"))
+        Err(ApiError(StatusCode::NOT_FOUND, "memory_entry_not_found"))
     }
 }
 
@@ -662,7 +662,7 @@ async fn remove_skill(
     if removed {
         Ok(StatusCode::NO_CONTENT)
     } else {
-        Err(ApiError(StatusCode::NOT_FOUND, "not_found"))
+        Err(ApiError(StatusCode::NOT_FOUND, "skill_not_found"))
     }
 }
 

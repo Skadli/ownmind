@@ -11,6 +11,7 @@ export function MemorySection({ onLoggedOut }: { onLoggedOut: () => void }) {
   const [mem, setMem] = useState<MemoryView | null>(null);
   const [skills, setSkills] = useState<SkillInfo[] | null>(null);
   const [core, setCore] = useState("");
+  const [base, setBase] = useState("");
   const [entry, setEntry] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -28,6 +29,7 @@ export function MemorySection({ onLoggedOut }: { onLoggedOut: () => void }) {
       const m = await api.getMemory();
       setMem(m);
       setCore(m.core);
+      setBase(m.core);
       setSkills(await api.listSkills());
     } catch (err) {
       handle(err);
@@ -49,7 +51,8 @@ export function MemorySection({ onLoggedOut }: { onLoggedOut: () => void }) {
       handle(err);
       // 冲突时重新载入最新核心记忆
       if (err instanceof ApiError && err.code === "memory_conflict") {
-        await load();
+        const m = await api.getMemory().catch(() => null);
+        if (m) setMem(m);
         setError(errorText(err.code));
       }
       return false;
@@ -59,8 +62,7 @@ export function MemorySection({ onLoggedOut }: { onLoggedOut: () => void }) {
   const saveCore = async (e: FormEvent) => {
     e.preventDefault();
     if (!mem) return;
-    if (await run(() => api.setMemoryCore(mem.core, core), true))
-      setSaved(true);
+    if (await run(() => api.setMemoryCore(base, core), true)) setSaved(true);
   };
   const addEntry = async (e: FormEvent) => {
     e.preventDefault();

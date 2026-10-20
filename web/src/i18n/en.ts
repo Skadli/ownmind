@@ -25,6 +25,8 @@ export const en: Messages = {
   "error.unauthenticated": "Your session expired. Please sign in again.",
   "error.invalid_title": "Title can't be empty or longer than 200 characters.",
   "error.not_found": "That conversation no longer exists.",
+  "error.memory_entry_not_found": "That memory entry no longer exists.",
+  "error.skill_not_found": "That skill no longer exists.",
   "error.internal": "Something went wrong. Please try again.",
   "nav.settings": "Settings",
   "nav.back": "Back",

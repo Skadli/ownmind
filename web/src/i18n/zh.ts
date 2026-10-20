@@ -22,6 +22,8 @@ export const zh = {
   "error.unauthenticated": "登录已过期，请重新登录。",
   "error.invalid_title": "标题不能为空，且不超过 200 个字符。",
   "error.not_found": "找不到这个会话。",
+  "error.memory_entry_not_found": "这条记忆已不存在。",
+  "error.skill_not_found": "这个技能已不存在。",
   "error.internal": "出错了，请稍后再试。",
   "nav.settings": "设置",
   "nav.back": "返回",
